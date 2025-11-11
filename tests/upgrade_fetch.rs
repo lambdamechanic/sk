@@ -186,6 +186,51 @@ fn upgrade_fetches_cache_and_applies_without_update() {
 }
 
 #[test]
+fn upgrade_handles_cross_device_rename_simulation() {
+    let tmp = tempdir().unwrap();
+    let root = tmp.path();
+    let cache_root = root.join("cache");
+    let remotes_root = root.join("remotes_root");
+    let project = root.join("project");
+    fs::create_dir_all(&project).unwrap();
+    git(&["init", "-b", "main"], &project);
+
+    let host = "local";
+    let owner = "o";
+    let repo = "r0";
+    let skill_path = "skill-0";
+    let (bare, v1, v2) = init_skill_repo(&remotes_root, repo, skill_path);
+    let cache = clone_to_cache(&cache_root, host, owner, repo, &bare);
+
+    // Install v1
+    let dest = project.join("skills").join("s0");
+    extract_subdir(&cache, &v1, skill_path, &dest);
+    let digest_v1 = digest_dir(&dest);
+    let lock = serde_json::json!({
+        "version":1,
+        "skills":[{"installName":"s0","source": {"url":"file://dummy","host":host,"owner":owner,"repo":repo,"skillPath":skill_path},"ref": null,"commit": v1,"digest": digest_v1,"installedAt":"1970-01-01T00:00:00Z"}],
+        "generatedAt":"1970-01-01T00:00:00Z"
+    });
+    write(&project.join("skills.lock.json"), &serde_json::to_string_pretty(&lock).unwrap());
+
+    // Simulate cross-device rename by env flag
+    let mut cmd = cargo_bin_cmd!("sk");
+    let out = cmd
+        .current_dir(&project)
+        .env("SK_CACHE_DIR", cache_root.to_str().unwrap())
+        .env("SK_SIMULATE_EXDEV", "1")
+        .args(["upgrade", "--all"]) // should succeed using fallback copy
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "upgrade failed: {out:?}");
+
+    // lockfile moved to v2
+    let new_lock: Json = serde_json::from_str(&fs::read_to_string(project.join("skills.lock.json")).unwrap()).unwrap();
+    let new_commit = new_lock["skills"][0]["commit"].as_str().unwrap().to_string();
+    assert_eq!(new_commit, v2);
+}
+
+#[test]
 fn upgrade_does_not_mutate_on_extract_failure() {
     let tmp = tempdir().unwrap();
     let root = tmp.path();

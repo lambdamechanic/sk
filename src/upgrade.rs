@@ -127,12 +127,50 @@ pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
     // Apply staged contents
     let mut updates: Vec<(String, String, String)> = vec![];
     for (name, dest, new_commit, new_digest) in staged.into_iter() {
-        if dest.exists() {
-            fs::remove_dir_all(&dest).with_context(|| format!("remove {}", dest.display()))?;
-        }
         let staged_path = staging.path().join(&name);
-        fs::rename(&staged_path, &dest).with_context(|| format!("rename {} -> {}", staged_path.display(), dest.display()))?;
+        // Attempt in-place rename first. If cross-device (EXDEV) or simulation flag is set, copy via temp sibling.
+        let simulate_exdev = std::env::var("SK_SIMULATE_EXDEV").ok().as_deref() == Some("1");
+        let mut _used_copy_fallback = false;
+        let rename_res = if simulate_exdev {
+            Err(std::io::Error::other("simulate EXDEV"))
+        } else {
+            fs::rename(&staged_path, &dest)
+        };
+        if let Err(e) = rename_res {
+            // If dest exists from a prior install, do not remove it until fallback copying completes into a temp sibling.
+            // Create temp sibling under the same parent as dest to ensure same filesystem.
+            let parent = dest.parent().ok_or_else(|| anyhow::anyhow!("no parent for dest"))?;
+            let temp_sibling = parent.join(format!(".sk-upgrade-tmp-{name}"));
+            if temp_sibling.exists() {
+                fs::remove_dir_all(&temp_sibling).ok();
+            }
+            fs::create_dir_all(&temp_sibling)?;
+            copy_dir_all(&staged_path, &temp_sibling)?;
+            // Now swap: remove dest if present, then rename temp -> dest (same FS).
+            if dest.exists() {
+                fs::remove_dir_all(&dest).with_context(|| format!("remove {}", dest.display()))?;
+            }
+            fs::rename(&temp_sibling, &dest).with_context(|| format!("rename {} -> {}", temp_sibling.display(), dest.display()))?;
+            _used_copy_fallback = true;
+            let _ = e; // silence unused variable if not logged
+        }
         updates.push((name, new_commit, new_digest));
+    }
+
+    fn copy_dir_all(src: &std::path::Path, dst: &std::path::Path) -> Result<()> {
+        for entry in walkdir::WalkDir::new(src) {
+            let entry = entry?;
+            let path = entry.path();
+            let rel = path.strip_prefix(src).unwrap();
+            let target = dst.join(rel);
+            if entry.file_type().is_dir() {
+                fs::create_dir_all(&target)?;
+            } else if entry.file_type().is_file() {
+                if let Some(parent) = target.parent() { fs::create_dir_all(parent)?; }
+                fs::copy(path, &target).with_context(|| format!("copy {} -> {}", path.display(), target.display()))?;
+            }
+        }
+        Ok(())
     }
 
     if args.dry_run {
