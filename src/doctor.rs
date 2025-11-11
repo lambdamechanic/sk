@@ -13,8 +13,8 @@ pub fn run_doctor(apply: bool) -> Result<()> {
     let lf: lock::Lockfile = serde_json::from_slice(&data).context("parse lockfile")?;
     let mut had_issues = false;
     for s in &lf.skills {
-        println!("== {} ==", s.installName);
-        let install_dir = project_root.join("skills").join(&s.installName); // default; not reading config here for simplicity
+        println!("== {} ==", s.install_name);
+        let install_dir = project_root.join("skills").join(&s.install_name); // default; not reading config here for simplicity
         if !install_dir.exists() {
             had_issues = true;
             println!("- Missing installed dir: {}", install_dir.display());
@@ -26,10 +26,10 @@ pub fn run_doctor(apply: bool) -> Result<()> {
                     if let Err(e) = crate::install::extract_subdir_from_commit(
                         &cache_dir,
                         &s.commit,
-                        &s.source.skillPath,
+                        &s.source.skill_path,
                         &install_dir,
                     ) {
-                        println!("  Rebuild failed: {}", e);
+                        println!("  Rebuild failed: {e}");
                     } else {
                         println!("  Rebuilt from locked commit.");
                     }

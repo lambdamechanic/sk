@@ -120,7 +120,7 @@ fn cmd_config(cmd: ConfigCmd) -> Result<()> {
                 "protocol" => println!("{}", cfg.protocol),
                 "default_host" => println!("{}", cfg.default_host),
                 "github_user" => println!("{}", cfg.github_user),
-                _ => anyhow::bail!("Unknown key: {}", key),
+                _ => anyhow::bail!("Unknown key: {key}"),
             }
         }
         ConfigCmd::Set { key, value } => {
@@ -130,7 +130,7 @@ fn cmd_config(cmd: ConfigCmd) -> Result<()> {
                 "protocol" => cfg.protocol = value,
                 "default_host" => cfg.default_host = value,
                 "github_user" => cfg.github_user = value,
-                _ => anyhow::bail!("Unknown key: {}", key),
+                _ => anyhow::bail!("Unknown key: {key}"),
             }
             config::save(&cfg)?;
             println!("ok");
@@ -140,13 +140,11 @@ fn cmd_config(cmd: ConfigCmd) -> Result<()> {
 }
 
 fn cmd_unimplemented(name: &str, _json: bool, _root: Option<&str>) -> Result<()> {
-    anyhow::bail!("'sk {}' not implemented yet in scaffolding phase", name)
+    anyhow::bail!("'sk {name}' not implemented yet in scaffolding phase")
 }
 
-fn cmd_list(root_flag: Option<&str>, json: bool) -> Result<()> {
+fn cmd_list(_root_flag: Option<&str>, json: bool) -> Result<()> {
     let project_root = git::ensure_git_repo()?;
-    let cfg = config::load_or_default()?;
-    let install_root_rel = root_flag.unwrap_or(&cfg.default_root);
     let lock_path = project_root.join("skills.lock.json");
     if !lock_path.exists() {
         println!("[]");
@@ -160,10 +158,10 @@ fn cmd_list(root_flag: Option<&str>, json: bool) -> Result<()> {
         for s in lf.skills {
             println!(
                 "{}\t{}@{}\t{}",
-                s.installName,
+                s.install_name,
                 s.source.repo,
                 &s.commit[..7],
-                s.source.skillPath
+                s.source.skill_path
             );
         }
     }
@@ -180,13 +178,13 @@ fn cmd_where(name: &str, root_flag: Option<&str>) -> Result<()> {
         println!("{}", path.display());
         Ok(())
     } else {
-        anyhow::bail!("not found: {}", name)
+        anyhow::bail!("not found: {name}")
     }
 }
 
 #[derive(Serialize)]
 struct StatusEntry {
-    installName: String,
+    install_name: String,
     state: String, // clean|modified|missing
     locked: Option<String>,
     current: Option<String>,
@@ -205,7 +203,7 @@ fn cmd_status(names: &[String], root_flag: Option<&str>, json: bool) -> Result<(
     let data = std::fs::read(&lock_path)?;
     let lf: lock::Lockfile = serde_json::from_slice(&data)?;
     let target_names: Vec<String> = if names.is_empty() {
-        lf.skills.iter().map(|s| s.installName.clone()).collect()
+        lf.skills.iter().map(|s| s.install_name.clone()).collect()
     } else {
         names.to_vec()
     };
@@ -214,9 +212,9 @@ fn cmd_status(names: &[String], root_flag: Option<&str>, json: bool) -> Result<(
     for skill in lf
         .skills
         .iter()
-        .filter(|s| target_names.contains(&s.installName))
+        .filter(|s| target_names.contains(&s.install_name))
     {
-        let dest = install_root.join(&skill.installName);
+        let dest = install_root.join(&skill.install_name);
         let (state, current_digest) = if !dest.exists() {
             ("missing".to_string(), None)
         } else {
@@ -236,10 +234,7 @@ fn cmd_status(names: &[String], root_flag: Option<&str>, json: bool) -> Result<(
             let new_tip = match &skill.ref_ {
                 Some(r) => {
                     if let Ok(Some(_)) = git::remote_branch_tip(&cache_dir, r) {
-                        Some(git::rev_parse(
-                            &cache_dir,
-                            &format!("refs/remotes/origin/{}", r),
-                        )?)
+                        Some(git::rev_parse(&cache_dir, &format!("refs/remotes/origin/{r}"))?)
                     } else {
                         None
                     }
@@ -248,7 +243,7 @@ fn cmd_status(names: &[String], root_flag: Option<&str>, json: bool) -> Result<(
                     let default =
                         git::detect_or_set_default_branch(&cache_dir, &skill.source.url).ok();
                     default
-                        .map(|b| git::rev_parse(&cache_dir, &format!("refs/remotes/origin/{}", b)))
+                        .map(|b| git::rev_parse(&cache_dir, &format!("refs/remotes/origin/{b}")))
                         .transpose()
                         .ok()
                         .flatten()
@@ -261,7 +256,7 @@ fn cmd_status(names: &[String], root_flag: Option<&str>, json: bool) -> Result<(
             }
         }
         out_entries.push(StatusEntry {
-            installName: skill.installName.clone(),
+            install_name: skill.install_name.clone(),
             state,
             locked: Some(skill.digest.clone()),
             current: current_digest,
@@ -274,7 +269,7 @@ fn cmd_status(names: &[String], root_flag: Option<&str>, json: bool) -> Result<(
     } else {
         for e in out_entries {
             let upd = e.update.unwrap_or_else(|| "".to_string());
-            println!("{}\t{}\t{}", e.installName, e.state, upd);
+            println!("{}\t{}\t{}", e.install_name, e.state, upd);
         }
     }
     Ok(())
