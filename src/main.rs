@@ -168,7 +168,7 @@ fn cmd_list(_root_flag: Option<&str>, json: bool) -> Result<()> {
 #[derive(Serialize)]
 struct CheckEntry {
     install_name: String,
-    state: String,    // ok|modified|missing
+    state: String, // ok|modified|missing
 }
 
 fn cmd_check(names: &[String], root_flag: Option<&str>, json: bool) -> Result<()> {

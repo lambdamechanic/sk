@@ -77,13 +77,7 @@ fn parse_skill_frontmatter(text: &str) -> Option<SkillMeta> {
     serde_yaml::from_str::<SkillMeta>(yaml).ok()
 }
 
-// Public helpers for local validation
-pub fn parse_frontmatter(text: &str) -> Option<SkillMeta> {
-    parse_skill_frontmatter(text)
-}
-
 pub fn parse_frontmatter_file(path: &Path) -> Result<SkillMeta> {
-    let data = fs::read_to_string(path)
-        .with_context(|| format!("reading {}", path.display()))?;
+    let data = fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
     parse_skill_frontmatter(&data).context("invalid or missing SKILL.md front-matter")
 }
