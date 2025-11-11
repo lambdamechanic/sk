@@ -1,6 +1,7 @@
 use anyhow::{bail, Context, Result};
 use regex::Regex;
 use serde::Deserialize;
+use std::fs;
 use std::path::Path;
 use std::process::Command;
 
@@ -74,4 +75,9 @@ fn parse_skill_frontmatter(text: &str) -> Option<SkillMeta> {
     let caps = re.captures(text)?;
     let yaml = caps.get(1)?.as_str();
     serde_yaml::from_str::<SkillMeta>(yaml).ok()
+}
+
+pub fn parse_frontmatter_file(path: &Path) -> Result<SkillMeta> {
+    let data = fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+    parse_skill_frontmatter(&data).context("invalid or missing SKILL.md front-matter")
 }

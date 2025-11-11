@@ -24,10 +24,7 @@ fn main() -> Result<()> {
             installed_name,
             root,
         } => cmd_where(&installed_name, root.as_deref()),
-        Commands::Check { names, root, json } => {
-            let _ = names;
-            cmd_unimplemented("check", json, root.as_deref())
-        }
+        Commands::Check { names, root, json } => cmd_check(&names, root.as_deref(), json),
         Commands::Status { names, root, json } => cmd_status(&names, root.as_deref(), json),
         Commands::Update => update::run_update(),
         Commands::Upgrade {
@@ -163,6 +160,72 @@ fn cmd_list(_root_flag: Option<&str>, json: bool) -> Result<()> {
                 &s.commit[..7],
                 s.source.skill_path
             );
+        }
+    }
+    Ok(())
+}
+
+#[derive(Serialize)]
+struct CheckEntry {
+    install_name: String,
+    state: String, // ok|modified|missing
+}
+
+fn cmd_check(names: &[String], root_flag: Option<&str>, json: bool) -> Result<()> {
+    let project_root = git::ensure_git_repo()?;
+    let cfg = config::load_or_default()?;
+    let install_root =
+        paths::resolve_project_path(&project_root, root_flag.unwrap_or(&cfg.default_root));
+    let lock_path = project_root.join("skills.lock.json");
+    if !lock_path.exists() {
+        anyhow::bail!("no lockfile");
+    }
+    let data = std::fs::read(&lock_path)?;
+    let lf: lock::Lockfile = serde_json::from_slice(&data)?;
+    let target_names: Vec<String> = if names.is_empty() {
+        lf.skills.iter().map(|s| s.install_name.clone()).collect()
+    } else {
+        names.to_vec()
+    };
+
+    let mut out: Vec<CheckEntry> = vec![];
+    for skill in lf
+        .skills
+        .iter()
+        .filter(|s| target_names.contains(&s.install_name))
+    {
+        let dest = install_root.join(&skill.install_name);
+        let state = if !dest.exists() {
+            "missing".to_string()
+        } else {
+            // Validate SKILL.md front-matter
+            let skill_md = dest.join("SKILL.md");
+            let valid = if skill_md.exists() {
+                crate::skills::parse_frontmatter_file(&skill_md).is_ok()
+            } else {
+                false
+            };
+            // Digest comparison
+            let digest_ok = crate::digest::digest_dir(&dest)
+                .map(|h| h == skill.digest)
+                .unwrap_or(false);
+            if valid && digest_ok {
+                "ok".to_string()
+            } else {
+                "modified".to_string()
+            }
+        };
+        out.push(CheckEntry {
+            install_name: skill.install_name.clone(),
+            state,
+        });
+    }
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&out)?);
+    } else {
+        for e in out {
+            println!("{}\t{}", e.install_name, e.state);
         }
     }
     Ok(())
