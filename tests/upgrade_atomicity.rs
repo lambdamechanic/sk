@@ -58,6 +58,7 @@ fn init_skill_repo(root: &Path, name: &str, skill_path: &str) -> (PathBuf, Strin
     // Configure identity for commits on CI
     git(&["config", "user.email", "test@example.com"], &work);
     git(&["config", "user.name", "Test User"], &work);
+    git(&["config", "commit.gpgSign", "false"], &work);
 
     // v1
     write(
