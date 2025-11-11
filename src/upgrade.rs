@@ -2,6 +2,7 @@ use crate::{config, digest, git, install, lock, paths};
 use anyhow::{bail, Context, Result};
 use chrono::Utc;
 use std::fs;
+use tempfile::TempDir;
 
 pub struct UpgradeArgs<'a> {
     pub target: &'a str,        // installed name or "--all"
@@ -58,15 +59,14 @@ pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
 
         let cache_dir =
             paths::cache_repo_path(&skill.source.host, &skill.source.owner, &skill.source.repo);
-        if !cache_dir.exists() {
-            let spec = git::RepoSpec {
-                url: skill.source.url.clone(),
-                host: skill.source.host.clone(),
-                owner: skill.source.owner.clone(),
-                repo: skill.source.repo.clone(),
-            };
-            git::ensure_cached_repo(&cache_dir, &spec)?;
-        }
+        // Always refresh cache to see latest remote state
+        let spec = git::RepoSpec {
+            url: skill.source.url.clone(),
+            host: skill.source.host.clone(),
+            owner: skill.source.owner.clone(),
+            repo: skill.source.repo.clone(),
+        };
+        git::ensure_cached_repo(&cache_dir, &spec)?;
 
         let effective_ref: Option<String> = if let Some(r) = args.r#ref {
             Some(r.to_string())
@@ -111,17 +111,27 @@ pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
         bail!("Local edits detected. Refusing to upgrade. Run 'sk sync-back <name>' or revert changes.");
     }
 
-    // Apply all planned changes, then update lockfile
-    let mut updates: Vec<(String, String, String)> = vec![]; // (install_name, new_commit, new_digest)
-    for (name, dest, new_commit) in plan {
+    // Stage all planned changes into a temp dir; only after all succeed, atomically swap in
+    let staging = TempDir::new_in(&project_root).context("create staging dir")?;
+    let mut staged: Vec<(String, std::path::PathBuf, String, String)> = vec![]; // (name, staged_path, new_commit, new_digest)
+    for (name, dest, new_commit) in &plan {
+        let s = targets.iter().find(|t| t.install_name == *name).unwrap();
+        let cache_dir = paths::cache_repo_path(&s.source.host, &s.source.owner, &s.source.repo);
+        let staged_path = staging.path().join(name);
+        fs::create_dir_all(&staged_path)?;
+        install::extract_subdir_from_commit(&cache_dir, new_commit, &s.source.skill_path, &staged_path)?;
+        let new_digest = digest::digest_dir(&staged_path)?;
+        staged.push((name.clone(), dest.clone(), new_commit.clone(), new_digest));
+    }
+
+    // Apply staged contents
+    let mut updates: Vec<(String, String, String)> = vec![];
+    for (name, dest, new_commit, new_digest) in staged.into_iter() {
         if dest.exists() {
             fs::remove_dir_all(&dest).with_context(|| format!("remove {}", dest.display()))?;
         }
-        fs::create_dir_all(&dest)?;
-        let s = targets.iter().find(|t| t.install_name == name).unwrap();
-        let cache_dir = paths::cache_repo_path(&s.source.host, &s.source.owner, &s.source.repo);
-        install::extract_subdir_from_commit(&cache_dir, &new_commit, &s.source.skill_path, &dest)?;
-        let new_digest = digest::digest_dir(&dest)?;
+        let staged_path = staging.path().join(&name);
+        fs::rename(&staged_path, &dest).with_context(|| format!("rename {} -> {}", staged_path.display(), dest.display()))?;
         updates.push((name, new_commit, new_digest));
     }
 

@@ -54,6 +54,7 @@ pub enum Commands {
     },
     Update,
     Upgrade {
+        #[arg(allow_hyphen_values = true)]
         target: String, // installed-name or --all
         #[arg(long = "ref")]
         r#ref: Option<String>,
