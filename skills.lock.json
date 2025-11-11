@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "skills": [
+    {
+      "installName": "template-skill",
+      "source": {
+        "url": "git@github.com:anthropics/skills.git",
+        "host": "github.com",
+        "owner": "anthropics",
+        "repo": "skills",
+        "skillPath": "template-skill"
+      },
+      "ref": null,
+      "commit": "c74d647e56e6daa12029b6acb11a821348ad044b",
+      "digest": "sha256:38c88f722b574a922311d334a70c2008a2a5b896f06eaa75516d716e5725b26f",
+      "installedAt": "2025-11-11T09:32:28.497265313+00:00"
+    }
+  ],
+  "generatedAt": "2025-11-11T09:32:28.497280331+00:00"
+}
