@@ -33,7 +33,11 @@ pub fn run_install(args: InstallArgs) -> Result<()> {
         Some(r) => {
             // Try origin/<branch>, then tag or sha
             let try1 = git::rev_parse(&cache_dir, &format!("origin/{}", r));
-            if let Ok(c1) = try1 { c1 } else { git::rev_parse(&cache_dir, r)? }
+            if let Ok(c1) = try1 {
+                c1
+            } else {
+                git::rev_parse(&cache_dir, r)?
+            }
         }
         None => {
             let rev = format!("refs/remotes/origin/{}", default_branch);
@@ -47,14 +51,31 @@ pub fn run_install(args: InstallArgs) -> Result<()> {
         .into_iter()
         .filter(|s| s.meta.name == args.skill_name)
         .collect();
-    if candidates.is_empty() { bail!("No skill named '{}' found in repo {}", args.skill_name, spec.url); }
+    if candidates.is_empty() {
+        bail!(
+            "No skill named '{}' found in repo {}",
+            args.skill_name,
+            spec.url
+        );
+    }
     let chosen = if candidates.len() > 1 {
-        if let Some(p) = args.path { 
+        if let Some(p) = args.path {
             let norm = p.trim_matches('/');
-            candidates.into_iter().find(|s| s.skill_path == norm).context("--path did not match any candidate")?
+            candidates
+                .into_iter()
+                .find(|s| s.skill_path == norm)
+                .context("--path did not match any candidate")?
         } else {
-            let paths = candidates.iter().map(|s| s.skill_path.as_str()).collect::<Vec<_>>().join(", ");
-            bail!("Multiple skills named '{}' found. Re-run with --path one of: {}", args.skill_name, paths);
+            let paths = candidates
+                .iter()
+                .map(|s| s.skill_path.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            bail!(
+                "Multiple skills named '{}' found. Re-run with --path one of: {}",
+                args.skill_name,
+                paths
+            );
         }
     } else {
         candidates.remove(0)
@@ -70,17 +91,33 @@ pub fn run_install(args: InstallArgs) -> Result<()> {
     fs::create_dir_all(&dest)?;
     let strip_components = chosen.skill_path.split('/').count();
     let mut archive = Command::new("git")
-        .args(["-C", &cache_dir.to_string_lossy(), "archive", "--format=tar", &commit, &chosen.skill_path])
+        .args([
+            "-C",
+            &cache_dir.to_string_lossy(),
+            "archive",
+            "--format=tar",
+            &commit,
+            &chosen.skill_path,
+        ])
         .stdout(Stdio::piped())
         .spawn()
         .context("spawn git archive failed")?;
     let mut tar = Command::new("tar")
-        .args(["-x", "--strip-components", &strip_components.to_string(), "-C", &dest.to_string_lossy()])
+        .args([
+            "-x",
+            "--strip-components",
+            &strip_components.to_string(),
+            "-C",
+            &dest.to_string_lossy(),
+        ])
         .stdin(archive.stdout.take().unwrap())
         .spawn()
         .context("spawn tar failed")?;
-    let st1 = archive.wait()?; let st2 = tar.wait()?;
-    if !st1.success() || !st2.success() { bail!("failed to extract skill contents"); }
+    let st1 = archive.wait()?;
+    let st2 = tar.wait()?;
+    if !st1.success() || !st2.success() {
+        bail!("failed to extract skill contents");
+    }
 
     // Compute digest
     let digest = digest::digest_dir(&dest)?;
@@ -88,17 +125,29 @@ pub fn run_install(args: InstallArgs) -> Result<()> {
     // Update lockfile
     let lock_path = project_root.join("skills.lock.json");
     let mut lf = if lock_path.exists() {
-        let data = fs::read(&lock_path)?; serde_json::from_slice::<lock::Lockfile>(&data)?
-    } else { lock::Lockfile::empty_now() };
+        let data = fs::read(&lock_path)?;
+        serde_json::from_slice::<lock::Lockfile>(&data)?
+    } else {
+        lock::Lockfile::empty_now()
+    };
 
     if lf.skills.iter().any(|s| s.installName == install_name) {
-        bail!("Lockfile already contains skill with installName '{}'", install_name);
+        bail!(
+            "Lockfile already contains skill with installName '{}'",
+            install_name
+        );
     }
 
     let ref_field = args.r#ref.map(|s| s.to_string());
     let entry = lock::LockSkill {
         installName: install_name.to_string(),
-        source: lock::Source { url: spec.url.clone(), host: spec.host.clone(), owner: spec.owner.clone(), repo: spec.repo.clone(), skillPath: chosen.skill_path.clone() },
+        source: lock::Source {
+            url: spec.url.clone(),
+            host: spec.host.clone(),
+            owner: spec.owner.clone(),
+            repo: spec.repo.clone(),
+            skillPath: chosen.skill_path.clone(),
+        },
         ref_: ref_field,
         commit: commit.clone(),
         digest: digest.clone(),
@@ -108,24 +157,50 @@ pub fn run_install(args: InstallArgs) -> Result<()> {
     lf.generatedAt = Utc::now().to_rfc3339();
     crate::lock::save_lockfile(&lock_path, &lf)?;
 
-    println!("Installed '{}' to {} @ {}", install_name, dest.display(), &commit[..7]);
+    println!(
+        "Installed '{}' to {} @ {}",
+        install_name,
+        dest.display(),
+        &commit[..7]
+    );
     Ok(())
 }
 
-pub fn extract_subdir_from_commit(cache_dir: &Path, commit: &str, subdir: &str, dest: &Path) -> Result<()> {
+pub fn extract_subdir_from_commit(
+    cache_dir: &Path,
+    commit: &str,
+    subdir: &str,
+    dest: &Path,
+) -> Result<()> {
     std::fs::create_dir_all(dest)?;
     let strip_components = subdir.split('/').count();
     let mut archive = Command::new("git")
-        .args(["-C", &cache_dir.to_string_lossy(), "archive", "--format=tar", commit, subdir])
+        .args([
+            "-C",
+            &cache_dir.to_string_lossy(),
+            "archive",
+            "--format=tar",
+            commit,
+            subdir,
+        ])
         .stdout(Stdio::piped())
         .spawn()
         .context("spawn git archive failed")?;
     let mut tar = Command::new("tar")
-        .args(["-x", "--strip-components", &strip_components.to_string(), "-C", &dest.to_string_lossy()])
+        .args([
+            "-x",
+            "--strip-components",
+            &strip_components.to_string(),
+            "-C",
+            &dest.to_string_lossy(),
+        ])
         .stdin(archive.stdout.take().unwrap())
         .spawn()
         .context("spawn tar failed")?;
-    let st1 = archive.wait()?; let st2 = tar.wait()?;
-    if !st1.success() || !st2.success() { anyhow::bail!("failed to extract skill contents"); }
+    let st1 = archive.wait()?;
+    let st2 = tar.wait()?;
+    if !st1.success() || !st2.success() {
+        anyhow::bail!("failed to extract skill contents");
+    }
     Ok(())
 }

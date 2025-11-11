@@ -1,8 +1,8 @@
 use anyhow::Result;
 use sha2::{Digest as _, Sha256};
-use walkdir::WalkDir;
 use std::fs;
 use std::path::Path;
+use walkdir::WalkDir;
 
 pub fn digest_dir(dir: &Path) -> Result<String> {
     let mut hasher = Sha256::new();
@@ -28,4 +28,3 @@ fn should_ignore(p: &Path) -> bool {
     let name = p.file_name().and_then(|s| s.to_str()).unwrap_or("");
     name == ".DS_Store" || name.ends_with("~") || name.ends_with(".swp") || name == ".git"
 }
-

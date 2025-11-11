@@ -1,13 +1,13 @@
 mod cli;
 mod config;
-mod paths;
-mod git;
-mod lock;
-mod update;
-mod install;
-mod skills;
 mod digest;
 mod doctor;
+mod git;
+mod install;
+mod lock;
+mod paths;
+mod skills;
+mod update;
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -20,27 +20,62 @@ fn main() -> Result<()> {
     match cli.command {
         Commands::Init { root } => cmd_init(root.as_deref()),
         Commands::List { root, json } => cmd_list(root.as_deref(), json),
-        Commands::Where { installed_name, root } => cmd_where(&installed_name, root.as_deref()),
+        Commands::Where {
+            installed_name,
+            root,
+        } => cmd_where(&installed_name, root.as_deref()),
         Commands::Check { names, root, json } => {
-            let _ = names; cmd_unimplemented("check", json, root.as_deref())
+            let _ = names;
+            cmd_unimplemented("check", json, root.as_deref())
         }
         Commands::Status { names, root, json } => cmd_status(&names, root.as_deref(), json),
         Commands::Update => update::run_update(),
-        Commands::Upgrade { target, r#ref, root, dry_run, include_pinned } => {
+        Commands::Upgrade {
+            target,
+            r#ref,
+            root,
+            dry_run,
+            include_pinned,
+        } => {
             let _ = (target, r#ref, dry_run, include_pinned);
             cmd_unimplemented("upgrade", false, root.as_deref())
         }
-        Commands::Remove { installed_name, root, force } => {
-            let _ = (installed_name, force); cmd_unimplemented("remove", false, root.as_deref())
+        Commands::Remove {
+            installed_name,
+            root,
+            force,
+        } => {
+            let _ = (installed_name, force);
+            cmd_unimplemented("remove", false, root.as_deref())
         }
-        Commands::SyncBack { installed_name, branch, message, root } => {
-            let _ = (installed_name, branch, message); cmd_unimplemented("sync-back", false, root.as_deref())
+        Commands::SyncBack {
+            installed_name,
+            branch,
+            message,
+            root,
+        } => {
+            let _ = (installed_name, branch, message);
+            cmd_unimplemented("sync-back", false, root.as_deref())
         }
         Commands::Doctor { apply } => doctor::run_doctor(apply),
         Commands::Config { cmd } => cmd_config(cmd),
-        Commands::Install { repo, skill_name, r#ref, alias, path, root, https } => {
-            install::run_install(install::InstallArgs { repo: &repo, skill_name: &skill_name, r#ref: r#ref.as_deref(), alias: alias.as_deref(), path: path.as_deref(), root: root.as_deref(), https })
-        }
+        Commands::Install {
+            repo,
+            skill_name,
+            r#ref,
+            alias,
+            path,
+            root,
+            https,
+        } => install::run_install(install::InstallArgs {
+            repo: &repo,
+            skill_name: &skill_name,
+            r#ref: r#ref.as_deref(),
+            alias: alias.as_deref(),
+            path: path.as_deref(),
+            root: root.as_deref(),
+            https,
+        }),
     }
 }
 
@@ -57,7 +92,13 @@ fn cmd_init(root_flag: Option<&str>) -> Result<()> {
     if !lock_path.exists() {
         let lf = lock::Lockfile::empty_now();
         lock::save_lockfile(&lock_path, &lf)?;
-        println!("Created {}", lock_path.strip_prefix(&project_root).unwrap_or(&lock_path).display());
+        println!(
+            "Created {}",
+            lock_path
+                .strip_prefix(&project_root)
+                .unwrap_or(&lock_path)
+                .display()
+        );
     }
 
     // Ensure user config is saved
@@ -107,13 +148,23 @@ fn cmd_list(root_flag: Option<&str>, json: bool) -> Result<()> {
     let cfg = config::load_or_default()?;
     let install_root_rel = root_flag.unwrap_or(&cfg.default_root);
     let lock_path = project_root.join("skills.lock.json");
-    if !lock_path.exists() { println!("[]"); return Ok(()); }
+    if !lock_path.exists() {
+        println!("[]");
+        return Ok(());
+    }
     let data = std::fs::read(&lock_path)?;
     let lf: lock::Lockfile = serde_json::from_slice(&data)?;
-    if json { println!("{}", serde_json::to_string_pretty(&lf.skills)?); }
-    else {
+    if json {
+        println!("{}", serde_json::to_string_pretty(&lf.skills)?);
+    } else {
         for s in lf.skills {
-            println!("{}\t{}@{}\t{}", s.installName, s.source.repo, &s.commit[..7], s.source.skillPath);
+            println!(
+                "{}\t{}@{}\t{}",
+                s.installName,
+                s.source.repo,
+                &s.commit[..7],
+                s.source.skillPath
+            );
         }
     }
     Ok(())
@@ -125,7 +176,12 @@ fn cmd_where(name: &str, root_flag: Option<&str>) -> Result<()> {
     let install_root_rel = root_flag.unwrap_or(&cfg.default_root);
     let install_root = paths::resolve_project_path(&project_root, install_root_rel);
     let path = install_root.join(name);
-    if path.exists() { println!("{}", path.display()); Ok(()) } else { anyhow::bail!("not found: {}", name) }
+    if path.exists() {
+        println!("{}", path.display());
+        Ok(())
+    } else {
+        anyhow::bail!("not found: {}", name)
+    }
 }
 
 #[derive(Serialize)]
@@ -140,17 +196,30 @@ struct StatusEntry {
 fn cmd_status(names: &[String], root_flag: Option<&str>, json: bool) -> Result<()> {
     let project_root = git::ensure_git_repo()?;
     let cfg = config::load_or_default()?;
-    let install_root = paths::resolve_project_path(&project_root, root_flag.unwrap_or(&cfg.default_root));
+    let install_root =
+        paths::resolve_project_path(&project_root, root_flag.unwrap_or(&cfg.default_root));
     let lock_path = project_root.join("skills.lock.json");
-    if !lock_path.exists() { anyhow::bail!("no lockfile"); }
+    if !lock_path.exists() {
+        anyhow::bail!("no lockfile");
+    }
     let data = std::fs::read(&lock_path)?;
     let lf: lock::Lockfile = serde_json::from_slice(&data)?;
-    let target_names: Vec<String> = if names.is_empty() { lf.skills.iter().map(|s| s.installName.clone()).collect() } else { names.to_vec() };
+    let target_names: Vec<String> = if names.is_empty() {
+        lf.skills.iter().map(|s| s.installName.clone()).collect()
+    } else {
+        names.to_vec()
+    };
     let mut out_entries: Vec<StatusEntry> = vec![];
 
-    for skill in lf.skills.iter().filter(|s| target_names.contains(&s.installName)) {
+    for skill in lf
+        .skills
+        .iter()
+        .filter(|s| target_names.contains(&s.installName))
+    {
         let dest = install_root.join(&skill.installName);
-        let (state, current_digest) = if !dest.exists() { ("missing".to_string(), None) } else {
+        let (state, current_digest) = if !dest.exists() {
+            ("missing".to_string(), None)
+        } else {
             let d = crate::digest::digest_dir(&dest).ok();
             match d {
                 Some(hash) if hash == skill.digest => ("clean".to_string(), Some(hash)),
@@ -159,26 +228,50 @@ fn cmd_status(names: &[String], root_flag: Option<&str>, json: bool) -> Result<(
             }
         };
         // Out-of-date check based on cache
-        let cache_dir = paths::cache_repo_path(&skill.source.host, &skill.source.owner, &skill.source.repo);
+        let cache_dir =
+            paths::cache_repo_path(&skill.source.host, &skill.source.owner, &skill.source.repo);
         let mut update_str = None;
         if cache_dir.exists() {
             // Determine tracked tip commit
             let new_tip = match &skill.ref_ {
                 Some(r) => {
-                    if let Ok(Some(_)) = git::remote_branch_tip(&cache_dir, r) { Some(git::rev_parse(&cache_dir, &format!("refs/remotes/origin/{}", r))?) } else { None }
+                    if let Ok(Some(_)) = git::remote_branch_tip(&cache_dir, r) {
+                        Some(git::rev_parse(
+                            &cache_dir,
+                            &format!("refs/remotes/origin/{}", r),
+                        )?)
+                    } else {
+                        None
+                    }
                 }
                 None => {
-                    let default = git::detect_or_set_default_branch(&cache_dir, &skill.source.url).ok();
-                    default.map(|b| git::rev_parse(&cache_dir, &format!("refs/remotes/origin/{}", b))).transpose().ok().flatten()
+                    let default =
+                        git::detect_or_set_default_branch(&cache_dir, &skill.source.url).ok();
+                    default
+                        .map(|b| git::rev_parse(&cache_dir, &format!("refs/remotes/origin/{}", b)))
+                        .transpose()
+                        .ok()
+                        .flatten()
                 }
             };
-            if let Some(new_sha) = new_tip { if new_sha != skill.commit { update_str = Some(format!("{} -> {}", &skill.commit[..7], &new_sha[..7])); } }
+            if let Some(new_sha) = new_tip {
+                if new_sha != skill.commit {
+                    update_str = Some(format!("{} -> {}", &skill.commit[..7], &new_sha[..7]));
+                }
+            }
         }
-        out_entries.push(StatusEntry { installName: skill.installName.clone(), state, locked: Some(skill.digest.clone()), current: current_digest, update: update_str });
+        out_entries.push(StatusEntry {
+            installName: skill.installName.clone(),
+            state,
+            locked: Some(skill.digest.clone()),
+            current: current_digest,
+            update: update_str,
+        });
     }
 
-    if json { println!("{}", serde_json::to_string_pretty(&out_entries)?); }
-    else {
+    if json {
+        println!("{}", serde_json::to_string_pretty(&out_entries)?);
+    } else {
         for e in out_entries {
             let upd = e.update.unwrap_or_else(|| "".to_string());
             println!("{}\t{}\t{}", e.installName, e.state, upd);
