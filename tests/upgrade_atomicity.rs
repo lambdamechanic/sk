@@ -55,6 +55,9 @@ fn init_skill_repo(root: &Path, name: &str, skill_path: &str) -> (PathBuf, Strin
     fs::create_dir_all(&work).unwrap();
     git(&["init", "-b", "main"], &work);
     git(&["remote", "add", "origin", bare.to_str().unwrap()], &work);
+    // Configure identity for commits on CI
+    git(&["config", "user.email", "test@example.com"], &work);
+    git(&["config", "user.name", "Test User"], &work);
 
     // v1
     write(
