@@ -4,8 +4,8 @@ use chrono::Utc;
 use std::fs;
 
 pub struct UpgradeArgs<'a> {
-    pub target: &'a str,          // installed name or "--all"
-    pub r#ref: Option<&'a str>,   // optional override ref
+    pub target: &'a str,        // installed name or "--all"
+    pub r#ref: Option<&'a str>, // optional override ref
     pub root: Option<&'a str>,
     pub dry_run: bool,
     pub include_pinned: bool,
@@ -31,8 +31,8 @@ pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
     } else {
         lf.skills
             .iter()
-            .cloned()
             .filter(|s| s.install_name == args.target)
+            .cloned()
             .collect()
     };
     if targets.is_empty() {
@@ -58,7 +58,8 @@ pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
         };
 
         // Ensure cache exists for this repo (do NOT fetch here; rely on 'sk update')
-        let cache_dir = paths::cache_repo_path(&skill.source.host, &skill.source.owner, &skill.source.repo);
+        let cache_dir =
+            paths::cache_repo_path(&skill.source.host, &skill.source.owner, &skill.source.repo);
         if !cache_dir.exists() {
             let spec = git::RepoSpec {
                 url: skill.source.url.clone(),
@@ -161,4 +162,3 @@ pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
     println!("Upgrade complete.");
     Ok(())
 }
-
