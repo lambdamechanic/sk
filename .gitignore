@@ -1,0 +1,14 @@
+# Rust
+/target/
+**/*.rs.bk
+
+# OS/editor
+.DS_Store
+*.swp
+*.swo
+
+# Cargo
+Cargo.lock
+
+# History notes (optional)
+# history/

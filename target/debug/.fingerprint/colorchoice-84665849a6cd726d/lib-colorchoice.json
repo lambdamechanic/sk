@@ -1,1 +1,0 @@
-{"rustc":963958390960925541,"features":"[]","declared_features":"[]","target":11187303652147478063,"profile":11679461194111479299,"path":13985118742056879105,"deps":[],"local":[{"CheckDepInfo":{"dep_info":"debug/.fingerprint/colorchoice-84665849a6cd726d/dep-lib-colorchoice","checksum":false}}],"rustflags":["--cfg","tokio_unstable"],"config":2069994364910194474,"compile_kind":0}
