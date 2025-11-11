@@ -185,12 +185,12 @@ pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
                 #[cfg(unix)]
                 {
                     use std::os::unix::fs as unixfs;
-                    if let Some(parent) = target.parent() { fs::create_dir_all(parent)?; }
-                    unixfs::symlink(&link_target, &target).with_context(|| format!(
-                        "symlink {} -> {}",
-                        link_target.display(),
-                        target.display()
-                    ))?;
+                    if let Some(parent) = target.parent() {
+                        fs::create_dir_all(parent)?;
+                    }
+                    unixfs::symlink(&link_target, &target).with_context(|| {
+                        format!("symlink {} -> {}", link_target.display(), target.display())
+                    })?;
                 }
                 #[cfg(windows)]
                 {
@@ -198,9 +198,12 @@ pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
                     if real.is_dir() {
                         fs::create_dir_all(&target)?;
                     } else {
-                        if let Some(parent) = target.parent() { fs::create_dir_all(parent)?; }
-                        fs::copy(&real, &target)
-                            .with_context(|| format!("copy {} -> {}", real.display(), target.display()))?;
+                        if let Some(parent) = target.parent() {
+                            fs::create_dir_all(parent)?;
+                        }
+                        fs::copy(&real, &target).with_context(|| {
+                            format!("copy {} -> {}", real.display(), target.display())
+                        })?;
                     }
                 }
             }
@@ -222,7 +225,11 @@ pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
     // Apply ref override even if commit unchanged
     if let Some(r) = args.r#ref {
         for t in &targets {
-            if let Some(entry) = lf.skills.iter_mut().find(|s| s.install_name == t.install_name) {
+            if let Some(entry) = lf
+                .skills
+                .iter_mut()
+                .find(|s| s.install_name == t.install_name)
+            {
                 entry.ref_ = Some(r.to_string());
             }
         }
