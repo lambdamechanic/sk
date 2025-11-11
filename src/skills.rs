@@ -41,7 +41,12 @@ pub fn list_skills_in_repo(cache_dir: &Path, commit: &str) -> Result<Vec<Discove
         }
         let file_path = line;
         let content = Command::new("git")
-            .args(["-C", &cache_dir.to_string_lossy(), "show", &format!("{commit}:{file_path}")])
+            .args([
+                "-C",
+                &cache_dir.to_string_lossy(),
+                "show",
+                &format!("{commit}:{file_path}"),
+            ])
             .output()
             .context("git show failed")?;
         if !content.status.success() {

@@ -234,7 +234,10 @@ fn cmd_status(names: &[String], root_flag: Option<&str>, json: bool) -> Result<(
             let new_tip = match &skill.ref_ {
                 Some(r) => {
                     if let Ok(Some(_)) = git::remote_branch_tip(&cache_dir, r) {
-                        Some(git::rev_parse(&cache_dir, &format!("refs/remotes/origin/{r}"))?)
+                        Some(git::rev_parse(
+                            &cache_dir,
+                            &format!("refs/remotes/origin/{r}"),
+                        )?)
                     } else {
                         None
                     }
