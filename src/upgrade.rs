@@ -180,6 +180,29 @@ pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
                 }
                 fs::copy(path, &target)
                     .with_context(|| format!("copy {} -> {}", path.display(), target.display()))?;
+            } else if entry.file_type().is_symlink() {
+                let link_target = std::fs::read_link(path)?;
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs as unixfs;
+                    if let Some(parent) = target.parent() { fs::create_dir_all(parent)?; }
+                    unixfs::symlink(&link_target, &target).with_context(|| format!(
+                        "symlink {} -> {}",
+                        link_target.display(),
+                        target.display()
+                    ))?;
+                }
+                #[cfg(windows)]
+                {
+                    let real = path.parent().unwrap().join(&link_target);
+                    if real.is_dir() {
+                        fs::create_dir_all(&target)?;
+                    } else {
+                        if let Some(parent) = target.parent() { fs::create_dir_all(parent)?; }
+                        fs::copy(&real, &target)
+                            .with_context(|| format!("copy {} -> {}", real.display(), target.display()))?;
+                    }
+                }
             }
         }
         Ok(())
@@ -189,20 +212,24 @@ pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
         return Ok(());
     }
 
-    if updates.is_empty() {
-        println!("Nothing to upgrade.");
-        return Ok(());
-    }
-
     // Persist lockfile updates (and optional ref override)
-    for (name, new_commit, new_digest) in updates {
-        if let Some(entry) = lf.skills.iter_mut().find(|s| s.install_name == name) {
-            if let Some(r) = args.r#ref {
+    for (name, new_commit, new_digest) in &updates {
+        if let Some(entry) = lf.skills.iter_mut().find(|s| s.install_name == *name) {
+            entry.commit = new_commit.clone();
+            entry.digest = new_digest.clone();
+        }
+    }
+    // Apply ref override even if commit unchanged
+    if let Some(r) = args.r#ref {
+        for t in &targets {
+            if let Some(entry) = lf.skills.iter_mut().find(|s| s.install_name == t.install_name) {
                 entry.ref_ = Some(r.to_string());
             }
-            entry.commit = new_commit;
-            entry.digest = new_digest;
         }
+    }
+    if updates.is_empty() && args.r#ref.is_none() {
+        println!("Nothing to upgrade.");
+        return Ok(());
     }
     lf.generated_at = Utc::now().to_rfc3339();
     crate::lock::save_lockfile(&lock_path, &lf)?;
