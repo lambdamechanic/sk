@@ -143,4 +143,6 @@ Currently included (folder → SKILL name):
 - `skills/bd/` → `bd-workflow` — How to use bd (beads) in this repo.
 - `skills/dumbwaiter-mcp/` → `dumbwaiter-mcp` — Wait-for-change via the Dumbwaiter MCP server (PR checks/merge). Requires the adjacent Dumbwaiter MCP server.
 
-Tip: Prefer using the `sk` CLI for installs/upgrades so `skills.lock.json` stays accurate. For these manually copied skills from `../dumbwaiter/skills`, we preserved their front‑matter and content under `./skills/<folder>/SKILL.md`.
+Note on `sk` CLI: `sk` is being developed in this repo and is not yet feature‑complete. Until it is ready, do not rely on it to install/upgrade/remove skills. Use the skills already vendored under `./skills/` as-is. Once `sk` is feature‑complete, you may use it to install/upgrade skills and maintain `skills.lock.json`.
+
+For now, these skills were manually copied from `../dumbwaiter/skills`; their front‑matter and content are preserved under `./skills/<folder>/SKILL.md`.
