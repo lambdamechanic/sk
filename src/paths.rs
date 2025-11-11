@@ -10,6 +10,10 @@ pub fn resolve_project_path(project_root: &Path, rel_or_abs: &str) -> PathBuf {
 }
 
 pub fn cache_root() -> PathBuf {
+    // Allow tests to override with SK_CACHE_DIR
+    if let Ok(override_dir) = std::env::var("SK_CACHE_DIR") {
+        return PathBuf::from(override_dir).join("repos");
+    }
     // ~/.cache/sk/repos
     if let Some(pd) = directories::ProjectDirs::from("", "", "sk") {
         pd.cache_dir().join("repos")

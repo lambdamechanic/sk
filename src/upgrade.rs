@@ -39,9 +39,9 @@ pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
         bail!("skill not found: {}", args.target);
     }
 
-    // We'll stage lockfile mutations here
-    let mut updates: Vec<(String, String, String)> = vec![]; // (install_name, new_commit, new_digest)
-
+    // Preflight: compute plan and detect modified without mutating
+    let mut plan: Vec<(String, std::path::PathBuf, String)> = vec![]; // (install_name, dest, new_commit)
+    let mut any_modified = false;
     for skill in &targets {
         let dest = install_root.join(&skill.install_name);
         if !dest.exists() {
@@ -50,14 +50,12 @@ pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
                 skill.install_name
             );
         }
-        // Determine state (modified vs clean)
         let cur_digest = digest::digest_dir(&dest).ok();
-        let modified = match &cur_digest {
+        let is_modified = match &cur_digest {
             Some(h) => h != &skill.digest,
             None => true,
         };
 
-        // Ensure cache exists for this repo (do NOT fetch here; rely on 'sk update')
         let cache_dir =
             paths::cache_repo_path(&skill.source.host, &skill.source.owner, &skill.source.repo);
         if !cache_dir.exists() {
@@ -70,14 +68,11 @@ pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
             git::ensure_cached_repo(&cache_dir, &spec)?;
         }
 
-        // Resolve target commit according to ref precedence
         let effective_ref: Option<String> = if let Some(r) = args.r#ref {
             Some(r.to_string())
         } else {
             skill.ref_.clone()
         };
-
-        // Determine new commit and whether ref is pinned (tag/SHA)
         let (new_commit, pinned): (String, bool) = match effective_ref.as_deref() {
             None => {
                 let default = git::detect_or_set_default_branch(&cache_dir, &skill.source.url)?;
@@ -89,53 +84,45 @@ pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
                     let rev = format!("refs/remotes/origin/{r}");
                     (git::rev_parse(&cache_dir, &rev)?, false)
                 } else {
-                    // treat as tag or exact SHA
                     (git::rev_parse(&cache_dir, r)?, true)
                 }
             }
         };
 
-        if pinned && !args.include_pinned && args.r#ref.is_none() {
-            // Skip pinned when not explicitly requested and no override passed
-            continue;
+        if !(pinned && !args.include_pinned && args.r#ref.is_none()) && new_commit != skill.commit {
+            plan.push((skill.install_name.clone(), dest.clone(), new_commit));
         }
 
-        if new_commit == skill.commit {
-            // already up to date
-            continue;
+        if is_modified {
+            any_modified = true;
         }
+    }
 
-        if args.dry_run {
-            println!(
-                "{}: {} -> {}",
-                skill.install_name,
-                &skill.commit[..7],
-                &new_commit[..7]
-            );
-            continue;
+    if args.dry_run {
+        for (name, _dest, new_commit) in &plan {
+            if let Some(s) = targets.iter().find(|t| &t.install_name == name) {
+                println!("{}: {} -> {}", name, &s.commit[..7], &new_commit[..7]);
+            }
         }
+        return Ok(());
+    }
 
-        if modified {
-            bail!(
-                "Local edits in 'skills/{}' detected (digest mismatch). Refusing to upgrade. Fork and repoint, or run 'sk sync-back {}' if you have push access.",
-                skill.install_name,
-                skill.install_name
-            );
-        }
+    if any_modified {
+        bail!("Local edits detected. Refusing to upgrade. Run 'sk sync-back <name>' or revert changes.");
+    }
 
-        // Apply: replace contents with new commit's subdir
+    // Apply all planned changes, then update lockfile
+    let mut updates: Vec<(String, String, String)> = vec![]; // (install_name, new_commit, new_digest)
+    for (name, dest, new_commit) in plan {
         if dest.exists() {
             fs::remove_dir_all(&dest).with_context(|| format!("remove {}", dest.display()))?;
         }
         fs::create_dir_all(&dest)?;
-        install::extract_subdir_from_commit(
-            &cache_dir,
-            &new_commit,
-            &skill.source.skill_path,
-            &dest,
-        )?;
+        let s = targets.iter().find(|t| t.install_name == name).unwrap();
+        let cache_dir = paths::cache_repo_path(&s.source.host, &s.source.owner, &s.source.repo);
+        install::extract_subdir_from_commit(&cache_dir, &new_commit, &s.source.skill_path, &dest)?;
         let new_digest = digest::digest_dir(&dest)?;
-        updates.push((skill.install_name.clone(), new_commit, new_digest));
+        updates.push((name, new_commit, new_digest));
     }
 
     if args.dry_run {
