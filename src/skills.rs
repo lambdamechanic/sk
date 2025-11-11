@@ -5,6 +5,7 @@ use std::path::Path;
 use std::process::Command;
 
 #[derive(Deserialize, Debug, Clone)]
+#[allow(dead_code)]
 pub struct SkillMeta {
     pub name: String,
     pub description: String,
@@ -30,7 +31,7 @@ pub fn list_skills_in_repo(cache_dir: &Path, commit: &str) -> Result<Vec<Discove
         .output()
         .context("git ls-tree failed")?;
     if !out.status.success() {
-        bail!("ls-tree failed for commit {}", commit);
+        bail!("ls-tree failed for commit {commit}");
     }
     let stdout = String::from_utf8_lossy(&out.stdout);
     let mut skills = vec![];
@@ -44,7 +45,7 @@ pub fn list_skills_in_repo(cache_dir: &Path, commit: &str) -> Result<Vec<Discove
                 "-C",
                 &cache_dir.to_string_lossy(),
                 "show",
-                &format!("{}:{}", commit, file_path),
+                &format!("{commit}:{file_path}"),
             ])
             .output()
             .context("git show failed")?;

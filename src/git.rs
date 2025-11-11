@@ -29,9 +29,9 @@ pub fn parse_repo_input(input: &str, https: bool, default_host: &str) -> Result<
             .split_once('/')
             .context("expected @owner/repo format")?;
         let url = if https {
-            format!("https://{}/{}/{}.git", default_host, owner, repo)
+            format!("https://{default_host}/{owner}/{repo}.git")
         } else {
-            format!("git@{}:{}/{}.git", default_host, owner, repo)
+            format!("git@{default_host}:{owner}/{repo}.git")
         };
         return Ok(RepoSpec {
             url,
@@ -76,7 +76,7 @@ pub fn parse_repo_input(input: &str, https: bool, default_host: &str) -> Result<
             .trim_end_matches(".git")
             .to_string();
         if host_s.is_empty() || owner_s.is_empty() || repo_s.is_empty() {
-            bail!("cannot parse repo triplet from URL: {}", url_s);
+            bail!("cannot parse repo triplet from URL: {url_s}");
         }
         return Ok(RepoSpec {
             url: url_s,
@@ -85,7 +85,7 @@ pub fn parse_repo_input(input: &str, https: bool, default_host: &str) -> Result<
             repo: repo_s,
         });
     }
-    bail!("Unrecognized repo input: {}", input)
+    bail!("Unrecognized repo input: {input}")
 }
 
 pub fn ensure_cached_repo(cache_dir: &Path, spec: &RepoSpec) -> Result<()> {
@@ -136,7 +136,7 @@ pub fn detect_or_set_default_branch(cache_dir: &Path, remote: &str) -> Result<St
         .output()
         .context("git ls-remote --symref failed")?;
     if !ls.status.success() {
-        bail!("git ls-remote failed for {}", remote);
+        bail!("git ls-remote failed for {remote}");
     }
     let txt = String::from_utf8_lossy(&ls.stdout);
     // Expect a line like: ref: refs/heads/main	HEAD
@@ -175,14 +175,14 @@ pub fn rev_parse(cache_dir: &Path, rev: &str) -> Result<String> {
         .output()
         .context("git rev-parse failed")?;
     if !out.status.success() {
-        bail!("unable to resolve rev: {}", rev);
+        bail!("unable to resolve rev: {rev}");
     }
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
 pub fn remote_branch_tip(cache_dir: &Path, branch: &str) -> Result<Option<String>> {
     // Check if refs/remotes/origin/<branch> exists
-    let full = format!("refs/remotes/origin/{}", branch);
+    let full = format!("refs/remotes/origin/{branch}");
     let out = Command::new("git")
         .args([
             "-C",

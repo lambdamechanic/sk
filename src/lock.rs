@@ -8,18 +8,21 @@ use std::path::Path;
 pub struct Lockfile {
     pub version: u32,
     pub skills: Vec<LockSkill>,
-    pub generatedAt: String,
+    #[serde(rename = "generatedAt")]
+    pub generated_at: String,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct LockSkill {
-    pub installName: String,
+    #[serde(rename = "installName")]
+    pub install_name: String,
     pub source: Source,
     #[serde(rename = "ref")]
     pub ref_: Option<String>,
     pub commit: String,
     pub digest: String,
-    pub installedAt: String,
+    #[serde(rename = "installedAt")]
+    pub installed_at: String,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -28,7 +31,8 @@ pub struct Source {
     pub host: String,
     pub owner: String,
     pub repo: String,
-    pub skillPath: String,
+    #[serde(rename = "skillPath")]
+    pub skill_path: String,
 }
 
 impl Lockfile {
@@ -36,7 +40,7 @@ impl Lockfile {
         Self {
             version: 1,
             skills: vec![],
-            generatedAt: Utc::now().to_rfc3339(),
+            generated_at: Utc::now().to_rfc3339(),
         }
     }
 }

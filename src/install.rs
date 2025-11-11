@@ -2,7 +2,7 @@ use crate::{config, digest, git, lock, paths, skills};
 use anyhow::{bail, Context, Result};
 use chrono::Utc;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Stdio};
 
 pub struct InstallArgs<'a> {
@@ -32,7 +32,7 @@ pub fn run_install(args: InstallArgs) -> Result<()> {
     let commit = match args.r#ref {
         Some(r) => {
             // Try origin/<branch>, then tag or sha
-            let try1 = git::rev_parse(&cache_dir, &format!("origin/{}", r));
+            let try1 = git::rev_parse(&cache_dir, &format!("origin/{r}"));
             if let Ok(c1) = try1 {
                 c1
             } else {
@@ -40,7 +40,7 @@ pub fn run_install(args: InstallArgs) -> Result<()> {
             }
         }
         None => {
-            let rev = format!("refs/remotes/origin/{}", default_branch);
+            let rev = format!("refs/remotes/origin/{default_branch}");
             git::rev_parse(&cache_dir, &rev)?
         }
     };
@@ -53,9 +53,9 @@ pub fn run_install(args: InstallArgs) -> Result<()> {
         .collect();
     if candidates.is_empty() {
         bail!(
-            "No skill named '{}' found in repo {}",
-            args.skill_name,
-            spec.url
+            "No skill named '{name}' found in repo {url}",
+            name = args.skill_name,
+            url = spec.url
         );
     }
     let chosen = if candidates.len() > 1 {
@@ -72,9 +72,8 @@ pub fn run_install(args: InstallArgs) -> Result<()> {
                 .collect::<Vec<_>>()
                 .join(", ");
             bail!(
-                "Multiple skills named '{}' found. Re-run with --path one of: {}",
-                args.skill_name,
-                paths
+                "Multiple skills named '{name}' found. Re-run with --path one of: {paths}",
+                name = args.skill_name,
             );
         }
     } else {
@@ -84,7 +83,8 @@ pub fn run_install(args: InstallArgs) -> Result<()> {
     let install_name = args.alias.unwrap_or(&chosen.meta.name);
     let dest = install_root.join(install_name);
     if dest.exists() {
-        bail!("Install destination '{}' already exists", dest.display());
+        let dest_s = dest.display().to_string();
+        bail!("Install destination '{dest_s}' already exists");
     }
 
     // Extract subdir from commit to dest via git archive | tar
@@ -131,38 +131,31 @@ pub fn run_install(args: InstallArgs) -> Result<()> {
         lock::Lockfile::empty_now()
     };
 
-    if lf.skills.iter().any(|s| s.installName == install_name) {
-        bail!(
-            "Lockfile already contains skill with installName '{}'",
-            install_name
-        );
+    if lf.skills.iter().any(|s| s.install_name == install_name) {
+        bail!("Lockfile already contains skill with installName '{install_name}'");
     }
 
     let ref_field = args.r#ref.map(|s| s.to_string());
     let entry = lock::LockSkill {
-        installName: install_name.to_string(),
+        install_name: install_name.to_string(),
         source: lock::Source {
             url: spec.url.clone(),
             host: spec.host.clone(),
             owner: spec.owner.clone(),
             repo: spec.repo.clone(),
-            skillPath: chosen.skill_path.clone(),
+            skill_path: chosen.skill_path.clone(),
         },
         ref_: ref_field,
         commit: commit.clone(),
         digest: digest.clone(),
-        installedAt: Utc::now().to_rfc3339(),
+        installed_at: Utc::now().to_rfc3339(),
     };
     lf.skills.push(entry);
-    lf.generatedAt = Utc::now().to_rfc3339();
+    lf.generated_at = Utc::now().to_rfc3339();
     crate::lock::save_lockfile(&lock_path, &lf)?;
 
-    println!(
-        "Installed '{}' to {} @ {}",
-        install_name,
-        dest.display(),
-        &commit[..7]
-    );
+    let dest_s = dest.display().to_string();
+    println!("Installed '{install_name}' to {dest_s} @ {}", &commit[..7]);
     Ok(())
 }
 
