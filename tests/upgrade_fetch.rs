@@ -12,7 +12,12 @@ fn git(args: &[&str], cwd: &Path) {
         .current_dir(cwd)
         .status()
         .unwrap();
-    assert!(status.success(), "git {:?} failed in {}", args, cwd.display());
+    assert!(
+        status.success(),
+        "git {:?} failed in {}",
+        args,
+        cwd.display()
+    );
 }
 
 fn write(path: &Path, contents: &str) {
@@ -55,7 +60,10 @@ fn init_skill_repo(root: &Path, name: &str, skill_path: &str) -> (PathBuf, Strin
     git(&["config", "commit.gpgSign", "false"], &work);
 
     // v1
-    write(&work.join(skill_path).join("SKILL.md"), &format!("---\nname: {name}\ndescription: test\n---\n"));
+    write(
+        &work.join(skill_path).join("SKILL.md"),
+        &format!("---\nname: {name}\ndescription: test\n---\n"),
+    );
     write(&work.join(skill_path).join("file.txt"), "v1\n");
     git(&["add", "."], &work);
     git(&["commit", "-m", "v1"], &work);
@@ -94,11 +102,21 @@ fn init_skill_repo(root: &Path, name: &str, skill_path: &str) -> (PathBuf, Strin
     (bare, v1, v2)
 }
 
-fn clone_to_cache(cache_root: &Path, host: &str, owner: &str, repo: &str, bare_remote: &Path) -> PathBuf {
+fn clone_to_cache(
+    cache_root: &Path,
+    host: &str,
+    owner: &str,
+    repo: &str,
+    bare_remote: &Path,
+) -> PathBuf {
     let dest = cache_root.join("repos").join(host).join(owner).join(repo);
     fs::create_dir_all(dest.parent().unwrap()).unwrap();
     git(
-        &["clone", bare_remote.to_str().unwrap(), dest.to_str().unwrap()],
+        &[
+            "clone",
+            bare_remote.to_str().unwrap(),
+            dest.to_str().unwrap(),
+        ],
         dest.parent().unwrap(),
     );
     git(&["remote", "set-head", "origin", "-a"], &dest);
@@ -122,7 +140,13 @@ fn extract_subdir(cache: &Path, commit: &str, subdir: &str, dest: &Path) {
         .unwrap();
     let stdout = archive.stdout.take().unwrap();
     let status = Command::new("tar")
-        .args(["-x", "--strip-components", &strip, "-C", dest.to_str().unwrap()])
+        .args([
+            "-x",
+            "--strip-components",
+            &strip,
+            "-C",
+            dest.to_str().unwrap(),
+        ])
         .stdin(stdout)
         .status()
         .unwrap();
@@ -163,7 +187,10 @@ fn upgrade_fetches_cache_and_applies_without_update() {
         }],
         "generatedAt":"1970-01-01T00:00:00Z"
     });
-    write(&project.join("skills.lock.json"), &serde_json::to_string_pretty(&lock).unwrap());
+    write(
+        &project.join("skills.lock.json"),
+        &serde_json::to_string_pretty(&lock).unwrap(),
+    );
 
     // Advance remote to v2 (already done in init); do NOT run `sk update`
 
@@ -178,10 +205,18 @@ fn upgrade_fetches_cache_and_applies_without_update() {
     assert!(out.status.success(), "upgrade failed: {out:?}");
 
     // Assert lockfile now points to v2 and digest changed
-    let new_lock: Json = serde_json::from_str(&fs::read_to_string(project.join("skills.lock.json")).unwrap()).unwrap();
-    let new_commit = new_lock["skills"][0]["commit"].as_str().unwrap().to_string();
+    let new_lock: Json =
+        serde_json::from_str(&fs::read_to_string(project.join("skills.lock.json")).unwrap())
+            .unwrap();
+    let new_commit = new_lock["skills"][0]["commit"]
+        .as_str()
+        .unwrap()
+        .to_string();
     assert_eq!(new_commit, v2);
-    let new_digest = new_lock["skills"][0]["digest"].as_str().unwrap().to_string();
+    let new_digest = new_lock["skills"][0]["digest"]
+        .as_str()
+        .unwrap()
+        .to_string();
     assert_ne!(new_digest, digest_v1);
 }
 
@@ -211,7 +246,10 @@ fn upgrade_handles_cross_device_rename_simulation() {
         "skills":[{"installName":"s0","source": {"url":"file://dummy","host":host,"owner":owner,"repo":repo,"skillPath":skill_path},"ref": null,"commit": v1,"digest": digest_v1,"installedAt":"1970-01-01T00:00:00Z"}],
         "generatedAt":"1970-01-01T00:00:00Z"
     });
-    write(&project.join("skills.lock.json"), &serde_json::to_string_pretty(&lock).unwrap());
+    write(
+        &project.join("skills.lock.json"),
+        &serde_json::to_string_pretty(&lock).unwrap(),
+    );
 
     // Simulate cross-device rename by env flag
     let mut cmd = cargo_bin_cmd!("sk");
@@ -225,8 +263,13 @@ fn upgrade_handles_cross_device_rename_simulation() {
     assert!(out.status.success(), "upgrade failed: {out:?}");
 
     // lockfile moved to v2
-    let new_lock: Json = serde_json::from_str(&fs::read_to_string(project.join("skills.lock.json")).unwrap()).unwrap();
-    let new_commit = new_lock["skills"][0]["commit"].as_str().unwrap().to_string();
+    let new_lock: Json =
+        serde_json::from_str(&fs::read_to_string(project.join("skills.lock.json")).unwrap())
+            .unwrap();
+    let new_commit = new_lock["skills"][0]["commit"]
+        .as_str()
+        .unwrap()
+        .to_string();
     assert_eq!(new_commit, v2);
 }
 
@@ -253,11 +296,17 @@ fn upgrade_does_not_mutate_on_extract_failure() {
     let work1 = remotes_root.join("sources").join("r1");
     fs::create_dir_all(&work1).unwrap();
     git(&["init", "-b", "main"], &work1);
-    git(&["remote", "add", "origin", bare1.to_str().unwrap()], &work1);
+    git(
+        &["remote", "add", "origin", bare1.to_str().unwrap()],
+        &work1,
+    );
     git(&["config", "user.email", "test@example.com"], &work1);
     git(&["config", "user.name", "Test User"], &work1);
     git(&["config", "commit.gpgSign", "false"], &work1);
-    write(&work1.join("skill-1").join("SKILL.md"), "---\nname: s1\ndescription: test\n---\n");
+    write(
+        &work1.join("skill-1").join("SKILL.md"),
+        "---\nname: s1\ndescription: test\n---\n",
+    );
     write(&work1.join("skill-1").join("file.txt"), "v1\n");
     git(&["add", "."], &work1);
     git(&["commit", "-m", "v1"], &work1);
@@ -295,7 +344,10 @@ fn upgrade_does_not_mutate_on_extract_failure() {
         ],
         "generatedAt":"1970-01-01T00:00:00Z"
     });
-    write(&project.join("skills.lock.json"), &serde_json::to_string_pretty(&lock).unwrap());
+    write(
+        &project.join("skills.lock.json"),
+        &serde_json::to_string_pretty(&lock).unwrap(),
+    );
     let pre_lock = fs::read_to_string(project.join("skills.lock.json")).unwrap();
 
     // Upgrade should fail due to extract error and must not mutate installs or lock
@@ -307,7 +359,10 @@ fn upgrade_does_not_mutate_on_extract_failure() {
         .output()
         .unwrap();
     assert!(!out.status.success(), "upgrade unexpectedly succeeded");
-    assert_eq!(pre_lock, fs::read_to_string(project.join("skills.lock.json")).unwrap());
+    assert_eq!(
+        pre_lock,
+        fs::read_to_string(project.join("skills.lock.json")).unwrap()
+    );
     assert_eq!(dig0, digest_dir(&dest0));
     assert_eq!(dig1, digest_dir(&dest1));
 }
