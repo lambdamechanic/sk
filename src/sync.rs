@@ -243,7 +243,10 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
         let stderr = String::from_utf8_lossy(&push_out.stderr);
         let stdout = String::from_utf8_lossy(&push_out.stdout);
         let combined = format!("{stderr}{stdout}");
-        bail!("git push failed: {}", combined.trim());
+        bail!(
+            "git push failed: {}. You may not have write access; consider forking and repointing the source.",
+            combined.trim()
+        );
     }
 
     // Success: attempt to remove worktree now; only disarm guard on success
