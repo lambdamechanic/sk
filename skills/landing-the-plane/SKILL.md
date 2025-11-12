@@ -69,6 +69,6 @@ Reject “done” until these tests exist and pass on CI across all OS targets i
 - Verify CI is green. If it fails, fix or document the failure reason before claiming you’ve landed the plane.
 - Double-check for leftover git stashes, unpushed commits, or edge cases noted earlier.
 - Comment "@codex review" on the PR with `gh` when you think you're done; it's not fully done until the reviewer reports no issues found.
-- When you report back (to the user, bd, etc.), include a direct link to the PR so it’s easy to find.
+- When you report back (to the user, bd, etc.), include a direct URL to the PR (full https://github.com/... link). Do not use only an abbreviation like `#123`.
 
 Working through this list ensures the feature is truly finished, both trackers agree, and reviewers have a clear, reproducible artifact to look at.
