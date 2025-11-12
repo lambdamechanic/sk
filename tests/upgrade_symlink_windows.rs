@@ -43,7 +43,7 @@ fn upgrade_preserves_directory_symlink_windows() {
     git(&["config", "commit.gpgSign", "false"], &work);
     git(&["config", "core.symlinks", "true"], &work);
 
-    fs::create_dir_all(work.join("skill/dir"))..unwrap();
+    fs::create_dir_all(work.join("skill/dir")).unwrap();
     fs::write(work.join("skill/dir/file.txt"), "v1\n").unwrap();
     // Create directory symlink dir-link -> dir
     if winfs::symlink_dir("dir", work.join("skill/dir-link")).is_err() {
