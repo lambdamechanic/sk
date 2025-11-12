@@ -1,5 +1,6 @@
 use crate::{git, lock};
 use anyhow::{bail, Context, Result};
+use gix_url as gurl;
 use std::fs;
 
 pub fn run_precommit(allow_local: bool) -> Result<()> {
@@ -47,7 +48,18 @@ fn is_local_source(url: &str, host_field: &str) -> bool {
         return true;
     }
     let u = url.to_ascii_lowercase();
-    // 2) file:// scheme
+    // 2) Prefer robust parse via gix-url for git transport URLs (handles ssh, scp, file, https)
+    if let Ok(parsed) = gurl::Url::try_from(u.as_str()) {
+        if matches!(parsed.scheme, gurl::Scheme::File) {
+            return true;
+        }
+        if let Some(h) = parsed.host() {
+            if host_is_local(h.to_string()) {
+                return true;
+            }
+        }
+    }
+    // Fallback heuristics for odd forms
     if u.starts_with("file://") {
         return true;
     }
@@ -72,6 +84,22 @@ fn is_local_source(url: &str, host_field: &str) -> bool {
                 host_part
             };
             return host_is_local(host.to_string());
+        }
+    }
+    // scp-like without userinfo: <host>:owner/repo (e.g., localhost:o/r.git or [::1]:o/r.git)
+    if !u.contains("://") {
+        if let Some((host_part, _path)) = u.split_once(':') {
+            // Guard against Windows drive letters like C:\
+            let is_windows_drive =
+                host_part.len() == 1 && host_part.as_bytes()[0].is_ascii_alphabetic();
+            if !is_windows_drive {
+                let host = if host_part.starts_with('[') && host_part.ends_with(']') {
+                    &host_part[1..host_part.len() - 1]
+                } else {
+                    host_part
+                };
+                return host_is_local(host.to_string());
+            }
         }
     }
     false

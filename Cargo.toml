@@ -21,6 +21,7 @@ directories = "5"
 tempfile = "3"
 chrono = { version = "0.4", features = ["serde"] }
 regex = "1"
+gix-url = "0.33"
 
 [features]
 default = []
