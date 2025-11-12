@@ -1,4 +1,4 @@
-use crate::{digest, git, lock, paths};
+use crate::{config, digest, git, lock, paths};
 use anyhow::{Context, Result};
 use chrono::Utc;
 use std::collections::HashSet;
@@ -12,6 +12,9 @@ pub fn run_doctor(apply: bool) -> Result<()> {
         println!("No lockfile found.");
         return Ok(());
     }
+    // Respect configured install root (default ./skills)
+    let cfg = config::load_or_default()?;
+    let install_root = paths::resolve_project_path(&project_root, &cfg.default_root);
     let data = fs::read(&lock_path)?;
     let lf: lock::Lockfile = serde_json::from_slice(&data).context("parse lockfile")?;
     let mut had_issues = false;
@@ -32,7 +35,7 @@ pub fn run_doctor(apply: bool) -> Result<()> {
     let mut referenced_caches: HashSet<PathBuf> = HashSet::new();
     for s in &lf.skills {
         println!("== {} ==", s.install_name);
-        let install_dir = project_root.join("skills").join(&s.install_name); // default; not reading config here for simplicity
+        let install_dir = install_root.join(&s.install_name);
         if !install_dir.exists() {
             had_issues = true;
             println!("- Missing installed dir: {}", install_dir.display());
