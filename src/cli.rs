@@ -81,8 +81,20 @@ pub enum Commands {
         #[arg(long)]
         root: Option<String>,
     },
+    #[command(
+        about = "Analyze and repair cache and lockfile",
+        long_about = "Analyze project state and optionally repair problems.\n\
+ - Detect duplicate installName entries in skills.lock.json.\n\
+ - Report digest drift, missing cache clones, and missing locked commits.\n\
+ - With --apply: rebuild missing installs from the locked commit when possible;\n\
+   drop unrecoverable (orphan) lock entries and normalize lockfile ordering/timestamp;\n\
+   prune unreferenced cache clones under the cache root (~/.cache/sk/repos)."
+    )]
     Doctor {
-        #[arg(long)]
+        #[arg(
+            long,
+            help = "Apply repairs: rebuild missing installs, drop orphan lock entries, prune unreferenced caches, normalize lockfile"
+        )]
         apply: bool,
     },
     Config {
