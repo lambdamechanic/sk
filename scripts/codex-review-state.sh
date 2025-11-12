@@ -28,9 +28,8 @@ NAME=${REPO##*/}
 
 # Codex actor names; override via CODEX_LOGINS env (CSV)
 CODEX_CSV=${CODEX_LOGINS:-chatgpt-codex-connector,chatgpt-codex-connector[bot]}
-CODEX_ARR=$(printf '%s' "$CODEX_CSV" | awk -F, '{printf "["; for(i=1;i<=NF;i++){printf (i>1?",":""); printf "\""$i"\""} printf "]"}')
 
-read -r -d '' GQL <<'EOF'
+GQL=$(cat <<'EOF'
 query($owner:String!, $name:String!, $number:Int!){
   repository(owner:$owner, name:$name){
     pullRequest(number:$number){
@@ -43,12 +42,14 @@ query($owner:String!, $name:String!, $number:Int!){
   }
 }
 EOF
+)
 
 RAW=$(gh api graphql -f query="$GQL" -F owner="$OWNER" -F name="$NAME" -F number="$PR_NUM")
 
 # Helper: find thumbs/eyes on PR or comments by Codex
-parse_js='def has_codex_up(rgs; codex): (rgs // []) | any(.content=="THUMBS_UP" and (.users.nodes | any(.login as $l | codex | index($l))));
-def has_codex_eyes(rgs; codex): (rgs // []) | any(.content=="EYES" and (.users.nodes | any(.login as $l | codex | index($l))));
+parse_js='def codex: ($codex_csv | split(","));
+def has_codex_up(rgs): (rgs // []) | any(.content=="THUMBS_UP" and (.users.nodes | any(.login as $l | codex | index($l))));
+def has_codex_eyes(rgs): (rgs // []) | any(.content=="EYES" and (.users.nodes | any(.login as $l | codex | index($l))));
 
   .data.repository.pullRequest as $pr
   | {
@@ -57,20 +58,20 @@ def has_codex_eyes(rgs; codex): (rgs // []) | any(.content=="EYES" and (.users.n
       headSha: ($pr.headRefOid),
       headCommittedAt: ($pr.commits.nodes[0].commit.committedDate),
       lastReviewRequestAt: ($pr.comments.nodes | map(select((.body // "") | contains("@codex review"))) | (max_by(.createdAt) | .createdAt)?),
-      codexThumbsUp: (has_codex_up($pr.reactionGroups; $codex) or ( $pr.comments.nodes | any(has_codex_up(.reactionGroups; $codex)) ) ),
-      codexEyes: (has_codex_eyes($pr.reactionGroups; $codex) or ( $pr.comments.nodes | any(has_codex_eyes(.reactionGroups; $codex)) ) ),
-      codexLatestCommentAt: ($pr.comments.nodes | map(select(.author.login as $a | $codex | index($a))) | (max_by(.createdAt) | .createdAt)?),
+      codexThumbsUp: (has_codex_up($pr.reactionGroups) or ( $pr.comments.nodes | any(has_codex_up(.reactionGroups)) ) ),
+      codexEyes: (has_codex_eyes($pr.reactionGroups) or ( $pr.comments.nodes | any(has_codex_eyes(.reactionGroups)) ) ),
+      codexLatestCommentAt: ($pr.comments.nodes | map(select(.author.login as $a | codex | index($a))) | (max_by(.createdAt) | .createdAt)?),
       unreplied: ($pr.reviewThreads.nodes
         | map(select(.isResolved==false))
-        | map({path, comments: .comments.nodes, codex_present: (.comments.nodes | any(.author.login as $a | $codex | index($a))),
-               non_codex_present: (.comments.nodes | any(.author.login as $a | ($codex | index($a) | not)))})
+        | map({path, comments: .comments.nodes, codex_present: (.comments.nodes | any(.author.login as $a | codex | index($a))),
+               non_codex_present: (.comments.nodes | any(.author.login as $a | (codex | index($a) | not)))})
         | map(select(.codex_present and (.non_codex_present | not)))
         | map({path, firstAuthor: (.comments[0].author.login), excerpt: (.comments[0].body | gsub("\n";" ") | .[:160]), url: (.comments[0].url)})
       )
     }
 '
 
-JSON=$(echo "$RAW" | jq --argjson codex "$CODEX_ARR" "$parse_js")
+JSON=$(echo "$RAW" | jq --arg codex_csv "$CODEX_CSV" "$parse_js")
 
 # Derive reviewRequestedForHead
 JSON=$(echo "$JSON" | jq '. as $x | $x + { reviewRequestedForHead: ( ($x.lastReviewRequestAt != null) and ((.headCommittedAt != null) and ($x.lastReviewRequestAt >= $x.headCommittedAt)) ) }')
@@ -79,4 +80,3 @@ JSON=$(echo "$JSON" | jq '. as $x | $x + { reviewRequestedForHead: ( ($x.lastRev
 JSON=$(echo "$JSON" | jq '. + {unrepliedCount: (.unreplied | length)}')
 
 echo "$JSON"
-
