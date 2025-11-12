@@ -185,7 +185,7 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
     }
 
     // Push branch
-    let push_ok = Command::new("git")
+    let push_out = Command::new("git")
         .args([
             "-C",
             wt_path.to_string_lossy().as_ref(),
@@ -194,16 +194,29 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
             "origin",
             &branch_name,
         ])
-        .status()
-        .context("git push failed")?
-        .success();
-    if push_ok {
+        .output()
+        .context("spawn git push failed")?;
+    if push_out.status.success() {
         let owner = &skill.source.owner;
         let repo = &skill.source.repo;
         println!("Pushed branch '{branch_name}' to origin for {owner}/{repo}.");
         println!("PR hint: gh pr create --fill --head {branch_name}");
     } else {
-        eprintln!("Push failed for branch '{branch_name}'. You may not have write access.");
+        let stderr = String::from_utf8_lossy(&push_out.stderr);
+        let stdout = String::from_utf8_lossy(&push_out.stdout);
+        let combined = format!("{stderr}{stdout}");
+        // Clean up worktree before erroring
+        let _ = Command::new("git")
+            .args([
+                "-C",
+                &cache_dir.to_string_lossy(),
+                "worktree",
+                "remove",
+                "--force",
+                wt_path.to_string_lossy().as_ref(),
+            ])
+            .status();
+        bail!("git push failed: {}", combined.trim());
     }
 
     // Remove worktree
