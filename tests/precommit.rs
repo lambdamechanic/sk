@@ -156,3 +156,28 @@ fn precommit_flags_http_localhost_and_ssh_localhost() {
         "local (file:// or localhost) sources",
     ));
 }
+
+#[test]
+fn precommit_flags_scp_with_non_git_user_and_ipv6() {
+    let tmp = tempdir().unwrap();
+    let project = tmp.path().join("project");
+    fs::create_dir_all(&project).unwrap();
+    git(&["init", "-b", "main"], &project);
+
+    // Two entries: non-git user@localhost and IPv6 loopback
+    let body = r#"{
+  "version": 1,
+  "skills": [
+    {"installName":"a","source":{"url":"me@localhost:o/r.git","host":"localhost","owner":"o","repo":"r","skillPath":"skill"},"ref":null,"commit":"deadbeef","digest":"sha256:abc","installedAt":"1970-01-01T00:00:00Z"},
+    {"installName":"b","source":{"url":"user@[::1]:o/r.git","host":"[::1]","owner":"o","repo":"r","skillPath":"skill"},"ref":null,"commit":"deadbeef","digest":"sha256:def","installedAt":"1970-01-01T00:00:00Z"}
+  ],
+  "generatedAt":"1970-01-01T00:00:00Z"
+}
+"#;
+    fs::write(project.join("skills.lock.json"), body).unwrap();
+    let mut cmd = cargo_bin_cmd!("sk");
+    cmd.current_dir(&project).args(["precommit"]);
+    cmd.assert()
+        .failure()
+        .stderr(contains("local (file:// or localhost) sources"));
+}

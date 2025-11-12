@@ -63,10 +63,16 @@ fn is_local_source(url: &str, host_field: &str) -> bool {
     if let Some(rest) = u.strip_prefix("ssh://") {
         return host_is_local(extract_netloc(rest));
     }
-    // scp-like: git@host:owner/repo
-    if let Some(after_at) = u.strip_prefix("git@").and_then(|s| s.split_once(':')) {
-        let host = after_at.0;
-        return host_is_local(host.to_string());
+    // scp-like: <user>@<host>:owner/repo (support any user, IPv6-in-brackets)
+    if let Some((_, after_at)) = u.split_once('@') {
+        if let Some((host_part, _path)) = after_at.split_once(':') {
+            let host = if host_part.starts_with('[') && host_part.ends_with(']') {
+                &host_part[1..host_part.len() - 1]
+            } else {
+                host_part
+            };
+            return host_is_local(host.to_string());
+        }
     }
     false
 }
