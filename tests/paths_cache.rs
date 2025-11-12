@@ -1,5 +1,5 @@
 use std::env;
-use std::path::PathBuf;
+ 
 
 use sk::paths::{cache_root, resolve_project_path};
 
@@ -17,10 +17,14 @@ fn cache_root_respects_env_override() {
 
 #[test]
 fn resolve_project_path_rel_and_abs() {
-    let proj = PathBuf::from("/tmp/project-root");
-    let rel = resolve_project_path(&proj, "subdir/file.txt");
-    assert_eq!(rel, PathBuf::from("/tmp/project-root/subdir/file.txt"));
+    let proj_dir = tempfile::tempdir().unwrap();
+    let proj = proj_dir.path().to_path_buf();
 
-    let abs = resolve_project_path(&proj, "/var/log/syslog");
-    assert_eq!(abs, PathBuf::from("/var/log/syslog"));
+    let rel = resolve_project_path(&proj, "subdir/file.txt");
+    assert_eq!(rel, proj.join("subdir/file.txt"));
+
+    let abs_path = tempfile::tempdir().unwrap().path().join("abs.txt");
+    let abs_str = abs_path.to_string_lossy().to_string();
+    let abs = resolve_project_path(&proj, &abs_str);
+    assert_eq!(abs, abs_path);
 }
