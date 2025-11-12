@@ -65,8 +65,38 @@ fn upgrade_preserves_symlinks() {
     git(&["commit", "-m", "v2"], &work);
     git(&["push", "origin", "main"], &work);
 
-    // Cache clone
-    let cache = cache_root.join("repos/local/o/r0");
+    // Cache clone: hash-only for file://
+    fn path_to_file_url(p: &Path) -> String {
+        #[cfg(windows)]
+        {
+            let s = p.to_string_lossy().replace('\\', "/");
+            if s.len() >= 2 && s.as_bytes()[1] == b':' {
+                return format!("file:///{s}");
+            }
+            if s.starts_with("//") {
+                return format!("file:{s}");
+            }
+            if s.starts_with('/') {
+                return format!("file://{s}");
+            }
+            format!("file:///{s}")
+        }
+        #[cfg(not(windows))]
+        {
+            format!("file://{}", p.to_string_lossy())
+        }
+    }
+    fn hashed_leaf(url: &str, repo: &str) -> String {
+        use sha2::{Digest, Sha256};
+        let h = Sha256::digest(url.as_bytes());
+        let hex = format!("{h:x}");
+        let short = &hex[..12];
+        format!("{repo}-{short}")
+    }
+    let file_url = path_to_file_url(&bare);
+    let cache = cache_root
+        .join("repos/local/o")
+        .join(hashed_leaf(&file_url, "r0"));
     fs::create_dir_all(cache.parent().unwrap()).unwrap();
     git(
         &["clone", bare.to_str().unwrap(), cache.to_str().unwrap()],
@@ -131,7 +161,7 @@ fn upgrade_preserves_symlinks() {
     )
     .unwrap();
     let head = head.trim().to_string();
-    let lock = serde_json::json!({"version":1,"skills":[{"installName":"s0","source":{"url":"file://dummy","host":"local","owner":"o","repo":"r0","skillPath":"skill"},"ref": null,"commit": head,"digest": digest_v1,"installedAt":"1970-01-01T00:00:00Z"}],"generatedAt":"1970-01-01T00:00:00Z"});
+    let lock = serde_json::json!({"version":1,"skills":[{"installName":"s0","source":{"url":file_url,"host":"local","owner":"o","repo":"r0","skillPath":"skill"},"ref": null,"commit": head,"digest": digest_v1,"installedAt":"1970-01-01T00:00:00Z"}],"generatedAt":"1970-01-01T00:00:00Z"});
     fs::write(
         project.join("skills.lock.json"),
         serde_json::to_string_pretty(&lock).unwrap(),

@@ -27,6 +27,14 @@ fn write(path: &Path, contents: &str) {
     fs::write(path, contents).unwrap();
 }
 
+fn hashed_leaf(url: &str, repo: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let h = Sha256::digest(url.as_bytes());
+    let hex = format!("{h:x}");
+    let short = &hex[..12];
+    format!("{repo}-{short}")
+}
+
 #[test]
 fn upgrade_rolls_back_when_apply_fails_mid_loop() {
     let tmp = tempdir().unwrap();
@@ -69,10 +77,13 @@ fn upgrade_rolls_back_when_apply_fails_mid_loop() {
         git(&["push", "origin", "main"], &work);
     }
 
-    // Clone caches
+    // Clone caches (hash-only leaf for file://dummy)
+    let dummy = "file://dummy";
     for repo in ["r0", "r1"] {
         let bare = remotes_root.join("remotes").join(format!("{repo}.git"));
-        let dest = cache_root.join("repos/local/o").join(repo);
+        let dest = cache_root
+            .join("repos/local/o")
+            .join(hashed_leaf(dummy, repo));
         fs::create_dir_all(dest.parent().unwrap()).unwrap();
         git(
             &["clone", bare.to_str().unwrap(), dest.to_str().unwrap()],
@@ -84,7 +95,9 @@ fn upgrade_rolls_back_when_apply_fails_mid_loop() {
     // Install v1 of each into project and build lockfile
     let mut skills = vec![];
     for (i, repo) in ["r0", "r1"].iter().enumerate() {
-        let cache = cache_root.join("repos/local/o").join(repo);
+        let cache = cache_root
+            .join("repos/local/o")
+            .join(hashed_leaf(dummy, repo));
         let head_prev = String::from_utf8(
             Command::new("git")
                 .args(["rev-parse", "HEAD~1"])
@@ -232,6 +245,7 @@ fn upgrade_rolls_back_when_copy_fails_in_swap() {
     fs::create_dir_all(&project).unwrap();
     git(&["init", "-b", "main"], &project);
 
+    let dummy = "file://dummy";
     for repo in ["r0", "r1"] {
         let bare = remotes_root.join("remotes").join(format!("{repo}.git"));
         fs::create_dir_all(&bare).unwrap();
@@ -260,7 +274,9 @@ fn upgrade_rolls_back_when_copy_fails_in_swap() {
         git(&["add", "."], &work);
         git(&["commit", "-m", "v2"], &work);
         git(&["push", "origin", "main"], &work);
-        let dest = cache_root.join("repos/local/o").join(repo);
+        let dest = cache_root
+            .join("repos/local/o")
+            .join(hashed_leaf(dummy, repo));
         fs::create_dir_all(dest.parent().unwrap()).unwrap();
         git(
             &["clone", bare.to_str().unwrap(), dest.to_str().unwrap()],
@@ -272,7 +288,9 @@ fn upgrade_rolls_back_when_copy_fails_in_swap() {
     // Install v1 for both and build lockfile
     let mut entries = vec![];
     for (i, repo) in ["r0", "r1"].iter().enumerate() {
-        let cache = cache_root.join("repos/local/o").join(repo);
+        let cache = cache_root
+            .join("repos/local/o")
+            .join(hashed_leaf(dummy, repo));
         let v1 = String::from_utf8(
             Command::new("git")
                 .args(["rev-parse", "HEAD~1"])

@@ -43,18 +43,11 @@ fn hashed_local_leaf(url: &str, repo: &str) -> Option<String> {
 }
 
 pub fn resolve_or_primary_cache_path(url: &str, host: &str, owner: &str, repo: &str) -> PathBuf {
-    // For local file:// sources, prefer a hashed leaf to avoid collisions; fall back to legacy path if present.
+    // For local file:// sources, use a hashed leaf to avoid collisions.
+    // Do not fall back to the legacy path even if it exists.
     if host == "local" {
         if let Some(leaf) = hashed_local_leaf(url, repo) {
-            let hashed = cache_root().join(host).join(owner).join(leaf);
-            if hashed.exists() {
-                return hashed;
-            }
-            let legacy = cache_repo_path(host, owner, repo);
-            if legacy.exists() {
-                return legacy;
-            }
-            return hashed; // default clone target
+            return cache_root().join(host).join(owner).join(leaf);
         }
     }
     cache_repo_path(host, owner, repo)

@@ -110,8 +110,21 @@ fn clone_to_cache(
     owner: &str,
     repo: &str,
     bare_remote: &Path,
+    url_for_lock: &str,
 ) -> PathBuf {
-    let dest = cache_root.join("repos").join(host).join(owner).join(repo);
+    fn hashed_leaf(url: &str, repo: &str) -> String {
+        use sha2::{Digest, Sha256};
+        let h = Sha256::digest(url.as_bytes());
+        let hex = format!("{h:x}");
+        let short = &hex[..12];
+        format!("{repo}-{short}")
+    }
+    let leaf = if host == "local" && url_for_lock.starts_with("file://") {
+        hashed_leaf(url_for_lock, repo)
+    } else {
+        repo.to_string()
+    };
+    let dest = cache_root.join("repos").join(host).join(owner).join(leaf);
     fs::create_dir_all(dest.parent().unwrap()).unwrap();
     git(
         &[
@@ -181,18 +194,29 @@ proptest! {
             let repo = format!("r{i}");
             let skill_path = format!("skill-{i}");
             let (bare, v1, _v2) = init_skill_repo(&remotes_root, &repo, &skill_path);
-            let cache = clone_to_cache(&cache_root, host, owner, &repo, &bare);
+            let file_url = {
+                #[cfg(windows)]
+                {
+                    let s = bare.to_string_lossy().replace('\\', "/");
+                    if s.len() >= 2 && s.as_bytes()[1] == b':' { format!("file:///{s}") }
+                    else if s.starts_with("//") { format!("file:{s}") }
+                    else if s.starts_with('/') { format!("file://{s}") } else { format!("file:///{s}") }
+                }
+                #[cfg(not(windows))]
+                { format!("file://{}", bare.to_string_lossy()) }
+            };
+            let cache = clone_to_cache(&cache_root, host, owner, &repo, &bare, &file_url);
 
             // Install v1 into project
             let installed_name = format!("s{i}");
             let dest = project.join("skills").join(&installed_name);
             extract_subdir(&cache, &v1, &skill_path, &dest);
             let digest = digest_dir(&dest);
-            entries.push((installed_name, repo, skill_path, v1, digest));
+            entries.push((installed_name, repo, skill_path, v1, digest, file_url));
         }
 
         // Mark one as modified by appending to file
-        let (name_k, _repo_k, _path_k, _v1_k, _digest_k) = entries[modified_idx].clone();
+        let (name_k, _repo_k, _path_k, _v1_k, _digest_k, _url_k) = entries[modified_idx].clone();
         let f = project.join("skills").join(&name_k).join("file.txt");
         fs::OpenOptions::new().append(true).open(&f).unwrap().write_all(b"local-edit\n").unwrap();
         let _new_digest = digest_dir(&project.join("skills").join(&name_k));
@@ -200,9 +224,9 @@ proptest! {
         // Write lockfile with v1 commits and original digests
         let lock = serde_json::json!({
             "version": 1,
-            "skills": entries.iter().map(|(name, repo, skill_path, v1, digest)| serde_json::json!({
+            "skills": entries.iter().map(|(name, repo, skill_path, v1, digest, url)| serde_json::json!({
                 "installName": name,
-                "source": {"url":"file://dummy","host":host,"owner":owner,"repo":repo,"skillPath": skill_path},
+                "source": {"url":url,"host":host,"owner":owner,"repo":repo,"skillPath": skill_path},
                 "ref": null,
                 "commit": v1,
                 "digest": digest,
@@ -214,7 +238,10 @@ proptest! {
 
         // Snapshot pre-state
         let pre_lock = fs::read_to_string(project.join("skills.lock.json")).unwrap();
-        let pre_digests: Vec<String> = entries.iter().map(|(name,_,_,_,_)| digest_dir(&project.join("skills").join(name))).collect();
+        let pre_digests: Vec<String> = entries
+            .iter()
+            .map(|(name, _, _, _, _, _)| digest_dir(&project.join("skills").join(name)))
+            .collect();
 
         // Run `sk upgrade --all` and expect failure (modified)
         let mut cmd = cargo_bin_cmd!("sk");
@@ -226,7 +253,10 @@ proptest! {
         // Assert no changes on disk and lockfile unchanged
         let post_lock = fs::read_to_string(project.join("skills.lock.json")).unwrap();
         assert_eq!(pre_lock, post_lock, "lockfile changed on failure");
-        let post_digests: Vec<String> = entries.iter().map(|(name,_,_,_,_)| digest_dir(&project.join("skills").join(name))).collect();
+        let post_digests: Vec<String> = entries
+            .iter()
+            .map(|(name, _, _, _, _, _)| digest_dir(&project.join("skills").join(name)))
+            .collect();
         prop_assert_eq!(pre_digests, post_digests);
     }
 }
