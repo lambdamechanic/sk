@@ -125,7 +125,11 @@ fn update_is_cache_only_and_fetches() {
     let cache_repo = cache_root.join("repos/local/o/r1");
     fs::create_dir_all(cache_repo.parent().unwrap()).unwrap();
     git(
-        &["clone", bare.to_str().unwrap(), cache_repo.to_str().unwrap()],
+        &[
+            "clone",
+            bare.to_str().unwrap(),
+            cache_repo.to_str().unwrap(),
+        ],
         cache_repo.parent().unwrap(),
     );
     // Ensure origin/HEAD set for default-branch detection
@@ -162,4 +166,3 @@ fn update_is_cache_only_and_fetches() {
     let tip = tip.trim();
     assert_eq!(tip, v2, "cache should fetch latest origin/main");
 }
-
