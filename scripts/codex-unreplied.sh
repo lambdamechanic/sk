@@ -19,7 +19,7 @@ owner=${repo%%/*}
 name=${repo##*/}
 
 # Codex bot usernames (override with CODEX_LOGINS="user1,user2")
-codex_csv=${CODEX_LOGINS:-chatgpt-codex-connector}
+codex_csv=${CODEX_LOGINS:-chatgpt-codex-connector,chatgpt-codex-connector[bot]}
 # jq-friendly array from CSV
 codex_jq=$(printf '%s' "$codex_csv" | awk -F, '{printf "["; for(i=1;i<=NF;i++){printf (i>1?",":""); printf "\""$i"\""} printf "]"}')
 
@@ -65,17 +65,16 @@ for pr in "${prs[@]}"; do
         codex_present: (.comments.nodes | any(.author.login as $a | $codex | index($a))),
         non_codex_present: (.comments.nodes | any(.author.login as $a | ($codex | index($a) | not)))
       })
-    | map(select(.codex_present and (non_codex_present | not)))
+    | map(select(.codex_present and (.non_codex_present | not)))
     | if length==0 then empty else {
         pr: $pr.number, url: $pr.url,
         pending: map({path, first: (.comments[0] | {author: .author.login, url: .url, excerpt: (.body|gsub("\n";" ")|.[:140])})})
       } end
   ' | jq -r 'if . then ("PR #" + (.pr|tostring) + " -> " + .url), (.pending[] | "  • " + .path + " — " + .first.author + " — " + .first.url + "\n    " + .first.excerpt) else empty end'
 
-  if echo "$json" | jq --argjson codex "$codex_jq" '.data.repository.pullRequest.reviewThreads.nodes | map(select(.isResolved==false)) | map({comments:.comments.nodes,codex_present:(.comments.nodes|any(.author.login as $a|$codex|index($a))), non_codex_present:(.comments.nodes|any(.author.login as $a|($codex|index($a)|not)))}) | any(.codex_present and ( .non_codex_present|not))' | grep -q true; then
+  if echo "$json" | jq --argjson codex "$codex_jq" '.data.repository.pullRequest.reviewThreads.nodes | map(select(.isResolved==false)) | map({comments:.comments.nodes,codex_present:(.comments.nodes|any(.author.login as $a|$codex|index($a))), non_codex_present:(.comments.nodes|any(.author.login as $a|($codex|index($a)|not)))}) | any(.codex_present and (.non_codex_present|not))' | grep -q true; then
     exit_code=1
   fi
 done
 
 exit $exit_code
-
