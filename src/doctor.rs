@@ -166,7 +166,9 @@ pub fn run_doctor(apply: bool) -> Result<()> {
         let mut lf_new = lf.clone();
         if !orphans_to_drop.is_empty() {
             let before = lf_new.skills.len();
-            lf_new.skills.retain(|s| !orphans_to_drop.contains(&lock_entry_key(s)));
+            lf_new
+                .skills
+                .retain(|s| !orphans_to_drop.contains(&lock_entry_key(s)));
             let removed = before - lf_new.skills.len();
             println!("Removed {removed} orphan lock entries.");
             had_issues = true;
