@@ -1,0 +1,11 @@
+pub mod cli;
+pub mod config;
+pub mod digest;
+pub mod doctor;
+pub mod git;
+pub mod install;
+pub mod lock;
+pub mod paths;
+pub mod skills;
+pub mod update;
+pub mod upgrade;
