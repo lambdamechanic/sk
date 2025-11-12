@@ -63,8 +63,32 @@ fn install_from_file_url_writes_lock_and_files() {
     fs::create_dir_all(&project).unwrap();
     git(&["init", "-b", "main"], &project);
 
+    // Cross-platform file:// URL for the bare repo
+    fn path_to_file_url(p: &Path) -> String {
+        #[cfg(windows)]
+        {
+            let mut s = p.to_string_lossy().replace('\\', "/");
+            // Drive letter path: C:/...
+            if s.len() >= 2 && s.as_bytes()[1] == b':' {
+                return format!("file:///{}", s);
+            }
+            // UNC path starting with //server/share
+            if s.starts_with("//") {
+                return format!("file:{}", s);
+            }
+            if s.starts_with('/') {
+                return format!("file://{}", s);
+            }
+            format!("file:///{}", s)
+        }
+        #[cfg(not(windows))]
+        {
+            format!("file://{}", p.to_string_lossy())
+        }
+    }
+
     // Run `sk install file:///... sfile --path skill` using a temp cache root
-    let file_url = format!("file://{}", bare.to_string_lossy());
+    let file_url = path_to_file_url(&bare);
     let mut cmd = cargo_bin_cmd!("sk");
     let out = cmd
         .current_dir(&project)
