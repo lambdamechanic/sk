@@ -140,7 +140,7 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
         .message
         .map(|s| s.to_string())
         .unwrap_or_else(|| default_commit_message(args.installed_name));
-    let commit_status = Command::new("git")
+    let commit_out = Command::new("git")
         .args([
             "-C",
             wt_path.to_string_lossy().as_ref(),
@@ -148,11 +148,18 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
             "-m",
             &msg,
         ])
-        .status()
-        .context("git commit failed")?;
-    if !commit_status.success() {
-        // Likely no changes; clean up and inform user
-        eprintln!("No changes to commit for '{}'.", args.installed_name);
+        .output()
+        .context("spawn git commit failed")?;
+    if !commit_out.status.success() {
+        // Capture actual error from git and surface it. Treat classic "nothing to commit" as non-fatal.
+        let stderr = String::from_utf8_lossy(&commit_out.stderr);
+        let stdout = String::from_utf8_lossy(&commit_out.stdout);
+        let combined = format!("{stderr}{stdout}");
+        let lower = combined.to_lowercase();
+        let no_changes = lower.contains("nothing to commit")
+            || lower.contains("no changes added to commit")
+            || lower.contains("nothing added to commit");
+
         // Best-effort cleanup of worktree
         let _ = Command::new("git")
             .args([
@@ -164,7 +171,17 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
                 wt_path.to_string_lossy().as_ref(),
             ])
             .status();
-        return Ok(());
+
+        if no_changes {
+            println!(
+                "No changes to commit for '{}': {}",
+                args.installed_name,
+                combined.trim()
+            );
+            return Ok(());
+        } else {
+            bail!("git commit failed: {}", combined.trim());
+        }
     }
 
     // Push branch
