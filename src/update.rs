@@ -28,7 +28,7 @@ pub fn run_update() -> Result<()> {
     }
 
     for (url, host, owner, repo) in uniq.into_iter() {
-        let cache_dir: PathBuf = paths::cache_repo_path(&host, &owner, &repo);
+        let cache_dir: PathBuf = paths::resolve_or_primary_cache_path(&url, &host, &owner, &repo);
         let spec = git::RepoSpec {
             url: url.clone(),
             host: host.clone(),

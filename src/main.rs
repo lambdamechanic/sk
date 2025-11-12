@@ -295,8 +295,12 @@ fn cmd_status(names: &[String], root_flag: Option<&str>, json: bool) -> Result<(
             }
         };
         // Out-of-date check based on cache
-        let cache_dir =
-            paths::cache_repo_path(&skill.source.host, &skill.source.owner, &skill.source.repo);
+        let cache_dir = paths::resolve_or_primary_cache_path(
+            &skill.source.url,
+            &skill.source.host,
+            &skill.source.owner,
+            &skill.source.repo,
+        );
         let mut update_str = None;
         if cache_dir.exists() {
             // Determine tracked tip commit

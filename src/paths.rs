@@ -1,3 +1,4 @@
+use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
 pub fn resolve_project_path(project_root: &Path, rel_or_abs: &str) -> PathBuf {
@@ -28,4 +29,33 @@ pub fn cache_root() -> PathBuf {
 
 pub fn cache_repo_path(host: &str, owner: &str, repo: &str) -> PathBuf {
     cache_root().join(host).join(owner).join(repo)
+}
+
+fn hashed_local_leaf(url: &str, repo: &str) -> Option<String> {
+    if url.starts_with("file://") {
+        let h = Sha256::digest(url.as_bytes());
+        let hex = format!("{:x}", h);
+        let short = &hex[..12];
+        Some(format!("{repo}-{short}"))
+    } else {
+        None
+    }
+}
+
+pub fn resolve_or_primary_cache_path(url: &str, host: &str, owner: &str, repo: &str) -> PathBuf {
+    // For local file:// sources, prefer a hashed leaf to avoid collisions; fall back to legacy path if present.
+    if host == "local" {
+        if let Some(leaf) = hashed_local_leaf(url, repo) {
+            let hashed = cache_root().join(host).join(owner).join(leaf);
+            if hashed.exists() {
+                return hashed;
+            }
+            let legacy = cache_repo_path(host, owner, repo);
+            if legacy.exists() {
+                return legacy;
+            }
+            return hashed; // default clone target
+        }
+    }
+    cache_repo_path(host, owner, repo)
 }
