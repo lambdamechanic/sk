@@ -70,8 +70,8 @@ pub fn list_skills_in_repo(cache_dir: &Path, commit: &str) -> Result<Vec<Discove
 }
 
 fn parse_skill_frontmatter(text: &str) -> Option<SkillMeta> {
-    // Expect leading --- YAML --- frontmatter
-    let re = Regex::new(r"(?s)^---\n(.*?)\n---").ok()?;
+    // Expect leading --- YAML --- frontmatter; tolerate CRLF on Windows
+    let re = Regex::new(r"(?s)^---\r?\n(.*?)\r?\n---").ok()?;
     let caps = re.captures(text)?;
     let yaml = caps.get(1)?.as_str();
     serde_yaml::from_str::<SkillMeta>(yaml).ok()
