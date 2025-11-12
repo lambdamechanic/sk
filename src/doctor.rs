@@ -1,6 +1,8 @@
 use crate::{digest, git, lock, paths};
 use anyhow::{Context, Result};
+use std::collections::HashSet;
 use std::fs;
+use std::path::PathBuf;
 
 pub fn run_doctor(apply: bool) -> Result<()> {
     let project_root = git::ensure_git_repo()?;
@@ -12,6 +14,20 @@ pub fn run_doctor(apply: bool) -> Result<()> {
     let data = fs::read(&lock_path)?;
     let lf: lock::Lockfile = serde_json::from_slice(&data).context("parse lockfile")?;
     let mut had_issues = false;
+
+    // Detect duplicate installName values in the lockfile
+    {
+        let mut seen = HashSet::new();
+        for s in &lf.skills {
+            if !seen.insert(s.install_name.clone()) {
+                had_issues = true;
+                println!("- Duplicate installName in lockfile: {}", s.install_name);
+            }
+        }
+    }
+
+    // Track cache repos referenced by the lockfile for later pruning
+    let mut referenced_caches: HashSet<PathBuf> = HashSet::new();
     for s in &lf.skills {
         println!("== {} ==", s.install_name);
         let install_dir = project_root.join("skills").join(&s.install_name); // default; not reading config here for simplicity
@@ -54,6 +70,7 @@ pub fn run_doctor(apply: bool) -> Result<()> {
         }
         // cache presence
         let cache_dir = paths::cache_repo_path(&s.source.host, &s.source.owner, &s.source.repo);
+        referenced_caches.insert(cache_dir.clone());
         if !cache_dir.exists() {
             had_issues = true;
             println!("- Cache clone missing: {}", cache_dir.display());
@@ -62,8 +79,74 @@ pub fn run_doctor(apply: bool) -> Result<()> {
             println!("- Locked commit missing from cache (force-push?)");
         }
     }
+
+    // Detect and optionally prune unreferenced cache clones
+    {
+        let cache_root = paths::cache_root();
+        if cache_root.exists() {
+            println!("== Cache ==");
+            // Walk cache_root/<host>/<owner>/<repo>
+            if let Ok(hosts) = fs::read_dir(&cache_root) {
+                for host in hosts.flatten() {
+                    if !host.path().is_dir() {
+                        continue;
+                    }
+                    if let Ok(owners) = fs::read_dir(host.path()) {
+                        for owner in owners.flatten() {
+                            if !owner.path().is_dir() {
+                                continue;
+                            }
+                            if let Ok(repos) = fs::read_dir(owner.path()) {
+                                for repo in repos.flatten() {
+                                    let repo_path = repo.path();
+                                    if !repo_path.is_dir() {
+                                        continue;
+                                    }
+                                    // Only consider directories that look like git clones
+                                    if !repo_path.join(".git").exists() {
+                                        continue;
+                                    }
+                                    if !referenced_caches.contains(&repo_path) {
+                                        had_issues = true;
+                                        println!(
+                                            "- Unreferenced cache clone: {}",
+                                            repo_path.display()
+                                        );
+                                        if apply {
+                                            if let Err(e) = fs::remove_dir_all(&repo_path) {
+                                                println!(
+                                                    "  Failed to prune cache '{}': {}",
+                                                    repo_path.display(),
+                                                    e
+                                                );
+                                            } else {
+                                                println!(
+                                                    "  Pruned unreferenced cache: {}",
+                                                    repo_path.display()
+                                                );
+                                                // Try cleaning up empty parents (owner/, host/)
+                                                let _ = clean_if_empty(owner.path());
+                                                let _ = clean_if_empty(host.path());
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
     if !had_issues {
         println!("All checks passed.");
+    }
+    Ok(())
+}
+
+fn clean_if_empty(dir: PathBuf) -> Result<()> {
+    if dir.is_dir() && dir.read_dir()?.next().is_none() {
+        fs::remove_dir_all(dir)?;
     }
     Ok(())
 }
