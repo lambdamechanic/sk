@@ -71,9 +71,10 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
         None => default_branch_name(args.installed_name),
     };
 
-    // Create a temporary worktree for the branch based at locked commit
-    let wt_dir = TempDir::new().context("create worktree dir")?;
-    let wt_path = wt_dir.path().to_path_buf();
+    // Create a unique temp base and choose a non-existent child path for the worktree target.
+    // Git requires the worktree path to not already exist.
+    let _wt_base = TempDir::new().context("create temp base for worktree")?;
+    let wt_path = _wt_base.path().join("wt");
     run(
         Command::new("git").args([
             "-C",
