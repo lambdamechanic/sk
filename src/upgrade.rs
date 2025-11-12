@@ -129,41 +129,81 @@ pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
         staged.push((name.clone(), dest.clone(), new_commit.clone(), new_digest));
     }
 
-    // Apply staged contents
+    // Apply staged contents transactionally with rollback on failure
     let mut updates: Vec<(String, String, String)> = vec![];
-    for (name, dest, new_commit, new_digest) in staged.into_iter() {
+    let mut applied: Vec<(String, std::path::PathBuf, std::path::PathBuf)> = vec![]; // (name, dest, backup)
+    let simulate_exdev = std::env::var("SK_SIMULATE_EXDEV").ok().as_deref() == Some("1");
+    let fail_after_first = std::env::var("SK_FAIL_AFTER_FIRST_SWAP").ok().as_deref() == Some("1");
+    let mut apply_err: Option<anyhow::Error> = None;
+    for (idx, (name, dest, new_commit, new_digest)) in staged.into_iter().enumerate() {
         let staged_path = staging.path().join(&name);
-        // Attempt in-place rename first. If cross-device (EXDEV) or simulation flag is set, copy via temp sibling.
-        let simulate_exdev = std::env::var("SK_SIMULATE_EXDEV").ok().as_deref() == Some("1");
-        let mut _used_copy_fallback = false;
+        let parent = match dest.parent() {
+            Some(p) => p.to_path_buf(),
+            None => {
+                apply_err = Some(anyhow::anyhow!("no parent for dest"));
+                break;
+            }
+        };
+        let backup = parent.join(format!(".sk-upgrade-bak-{name}"));
+        if backup.exists() {
+            fs::remove_dir_all(&backup).ok();
+        }
+        if dest.exists() {
+            fs::rename(&dest, &backup)
+                .with_context(|| format!("backup {} -> {}", dest.display(), backup.display()))?;
+        } else {
+            fs::create_dir_all(&backup)?; // placeholder for rollback path
+        }
+        // Try direct rename staged -> dest
         let rename_res = if simulate_exdev {
             Err(std::io::Error::other("simulate EXDEV"))
         } else {
             fs::rename(&staged_path, &dest)
         };
-        if let Err(e) = rename_res {
-            // If dest exists from a prior install, do not remove it until fallback copying completes into a temp sibling.
-            // Create temp sibling under the same parent as dest to ensure same filesystem.
-            let parent = dest
-                .parent()
-                .ok_or_else(|| anyhow::anyhow!("no parent for dest"))?;
+        if let Err(_e) = rename_res {
+            // Fallback: copy staged into a temp sibling and then rename into place
             let temp_sibling = parent.join(format!(".sk-upgrade-tmp-{name}"));
             if temp_sibling.exists() {
                 fs::remove_dir_all(&temp_sibling).ok();
             }
             fs::create_dir_all(&temp_sibling)?;
             copy_dir_all(&staged_path, &temp_sibling)?;
-            // Now swap: remove dest if present, then rename temp -> dest (same FS).
+            // Ensure dest does not exist (moved to backup already), then move temp into place
             if dest.exists() {
-                fs::remove_dir_all(&dest).with_context(|| format!("remove {}", dest.display()))?;
+                fs::remove_dir_all(&dest).ok();
             }
             fs::rename(&temp_sibling, &dest).with_context(|| {
                 format!("rename {} -> {}", temp_sibling.display(), dest.display())
             })?;
-            _used_copy_fallback = true;
-            let _ = e; // silence unused variable if not logged
         }
-        updates.push((name, new_commit, new_digest));
+        // Success for this target
+        updates.push((name.clone(), new_commit, new_digest));
+        applied.push((name.clone(), dest.clone(), backup.clone()));
+
+        if fail_after_first && idx == 0 {
+            apply_err = Some(anyhow::anyhow!("simulate apply failure after first swap"));
+            break;
+        }
+    }
+    // On failure, rollback prior changes and surface error
+    if let Some(err) = apply_err {
+        for (name, dest, backup) in applied.into_iter().rev() {
+            let _ = fs::remove_dir_all(&dest);
+            // Restore backup -> dest
+            let _ = fs::rename(&backup, &dest).or_else(|_| {
+                // rename failed; copy back recursively
+                copy_dir_all(&backup, &dest)
+            });
+            // Cleanup backup dir if still present
+            let _ = fs::remove_dir_all(&backup);
+            let _ = name; // silence
+        }
+        // Ensure we do not mutate lockfile
+        return Err(err);
+    }
+    // Success path: cleanup backups
+    for (_name, _dest, backup) in &applied {
+        let _ = fs::remove_dir_all(backup);
     }
 
     fn copy_dir_all(src: &std::path::Path, dst: &std::path::Path) -> Result<()> {
