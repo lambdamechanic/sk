@@ -18,6 +18,17 @@ When someone asks you to "land the plane", they want you to wrap up the current 
   3. Implement the fix in a separate commit, push it, and reply to the original feedback thread with the fixing commit hash/summary.
   4. Comment `@codex review` (or ping the human reviewer) to kick off the next review once the fix is in place.
 
+### Transactional upgrades check (sticky failure prevention)
+
+If the work touches any multi-item “apply/upgrade” loop, add property/integration tests that prove these invariants:
+
+- Atomicity on failure: if any target fails during the apply loop, previously processed targets are rolled back (or the lockfile is advanced in step with on-disk changes). The repository must never land in a state where on-disk contents and lockfile disagree, causing future runs to refuse to proceed.
+- Lockfile sync: the lock is only written after all filesystem changes succeed; if the user supplies a ref override (`--ref`), the lockfile’s `ref` is updated even when the resolved commit is unchanged.
+- Cross-device safety: staging/swap logic works when the install root lives on a different filesystem (e.g., rename EXDEV). Include a test that simulates cross-device behavior and asserts correctness.
+- Symlink preservation: upgrades preserve symlinks inside upgraded trees (recreate symlinks on Unix; best-effort on Windows).
+
+Reject “done” until these tests exist and pass on CI across all OS targets in the matrix.
+
 ## 2. Code & Repo Hygiene
 - Strip out temporary logging, printlns, dbg! calls, feature flags, sleep statements, and other debug aids that should not ship.
 - Remove throwaway files, scripts, or notes that were only needed during exploration.
