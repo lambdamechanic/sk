@@ -12,7 +12,12 @@ fn git(args: &[&str], cwd: &Path) {
         .current_dir(cwd)
         .status()
         .unwrap();
-    assert!(status.success(), "git {:?} failed in {}", args, cwd.display());
+    assert!(
+        status.success(),
+        "git {:?} failed in {}",
+        args,
+        cwd.display()
+    );
 }
 
 fn cache_repo_path(root: &Path, host: &str, owner: &str, repo: &str) -> PathBuf {
