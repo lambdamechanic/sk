@@ -46,7 +46,7 @@ for pr in "${prs[@]}"; do
           nodes{
             isResolved
             path
-            comments(first:50){
+            comments(last:50){
               nodes{ id url body createdAt author{ login } }
             }
           }

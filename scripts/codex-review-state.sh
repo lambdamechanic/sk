@@ -37,7 +37,7 @@ query($owner:String!, $name:String!, $number:Int!){
       commits(last:1){ nodes{ commit{ oid committedDate } } }
       reactionGroups{ content users(first:100){ nodes{ login } } }
       comments(last:100){ nodes{ author{ login } body createdAt reactionGroups{ content users(first:100){ nodes{ login } } } } }
-      reviewThreads(first:100){ nodes{ isResolved path comments(first:50){ nodes{ author{ login } body url } } } }
+      reviewThreads(first:100){ nodes{ isResolved path comments(last:50){ nodes{ author{ login } body url } } } }
     }
   }
 }
