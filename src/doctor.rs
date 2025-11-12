@@ -18,7 +18,23 @@ pub fn run_doctor(apply: bool) -> Result<()> {
     let data = fs::read(&lock_path)?;
     let lf: lock::Lockfile = serde_json::from_slice(&data).context("parse lockfile")?;
     let mut had_issues = false;
-    let mut orphans_to_drop: Vec<String> = Vec::new();
+    // Track exact lock entries to drop by a stable composite key to avoid
+    // accidentally removing other entries that share the same installName.
+    let mut orphans_to_drop: HashSet<String> = HashSet::new();
+
+    fn lock_entry_key(s: &lock::LockSkill) -> String {
+        // installName + full source identity + commit + digest ensures uniqueness
+        format!(
+            "{}|{}|{}|{}|{}|{}|{}",
+            s.install_name,
+            s.source.host,
+            s.source.owner,
+            s.source.repo,
+            s.source.skill_path,
+            s.commit,
+            s.digest
+        )
+    }
 
     // Detect duplicate installName values in the lockfile
     {
@@ -56,8 +72,8 @@ pub fn run_doctor(apply: bool) -> Result<()> {
                     }
                 } else {
                     println!("  Cannot rebuild: cache/commit missing.");
-                    // mark for removal from lockfile on apply
-                    orphans_to_drop.push(s.install_name.clone());
+                    // mark this exact lock entry for removal on apply
+                    orphans_to_drop.insert(lock_entry_key(s));
                 }
             }
         } else {
@@ -150,9 +166,7 @@ pub fn run_doctor(apply: bool) -> Result<()> {
         let mut lf_new = lf.clone();
         if !orphans_to_drop.is_empty() {
             let before = lf_new.skills.len();
-            lf_new
-                .skills
-                .retain(|s| !orphans_to_drop.contains(&s.install_name));
+            lf_new.skills.retain(|s| !orphans_to_drop.contains(&lock_entry_key(s)));
             let removed = before - lf_new.skills.len();
             println!("Removed {removed} orphan lock entries.");
             had_issues = true;
