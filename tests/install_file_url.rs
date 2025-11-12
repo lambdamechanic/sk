@@ -70,16 +70,16 @@ fn install_from_file_url_writes_lock_and_files() {
             let mut s = p.to_string_lossy().replace('\\', "/");
             // Drive letter path: C:/...
             if s.len() >= 2 && s.as_bytes()[1] == b':' {
-                return format!("file:///{}", s);
+                return format!("file:///{s}");
             }
             // UNC path starting with //server/share
             if s.starts_with("//") {
-                return format!("file:{}", s);
+                return format!("file:{s}");
             }
             if s.starts_with('/') {
-                return format!("file://{}", s);
+                return format!("file://{s}");
             }
-            format!("file:///{}", s)
+            format!("file:///{s}")
         }
         #[cfg(not(windows))]
         {
