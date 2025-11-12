@@ -2,6 +2,7 @@ use crate::{config, git, lock, paths};
 use anyhow::{bail, Context, Result};
 use chrono::Utc;
 use std::fs;
+use std::path::PathBuf;
 use std::process::Command;
 use tempfile::TempDir;
 
@@ -86,6 +87,8 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
         ]),
         "git worktree add",
     )?;
+    // Guard: ensure we always remove the worktree even on early errors
+    let mut wt_guard = WorktreeGuard::new(cache_dir.clone(), wt_path.clone());
 
     // Rsync or copy installed dir into worktree skillPath
     let target_subdir = wt_path.join(&skill.source.skill_path);
@@ -160,18 +163,6 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
             || lower.contains("no changes added to commit")
             || lower.contains("nothing added to commit");
 
-        // Best-effort cleanup of worktree
-        let _ = Command::new("git")
-            .args([
-                "-C",
-                &cache_dir.to_string_lossy(),
-                "worktree",
-                "remove",
-                "--force",
-                wt_path.to_string_lossy().as_ref(),
-            ])
-            .status();
-
         if no_changes {
             println!(
                 "No changes to commit for '{}': {}",
@@ -205,21 +196,10 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
         let stderr = String::from_utf8_lossy(&push_out.stderr);
         let stdout = String::from_utf8_lossy(&push_out.stdout);
         let combined = format!("{stderr}{stdout}");
-        // Clean up worktree before erroring
-        let _ = Command::new("git")
-            .args([
-                "-C",
-                &cache_dir.to_string_lossy(),
-                "worktree",
-                "remove",
-                "--force",
-                wt_path.to_string_lossy().as_ref(),
-            ])
-            .status();
         bail!("git push failed: {}", combined.trim());
     }
 
-    // Remove worktree
+    // Success: remove worktree now and disarm guard
     let _ = Command::new("git")
         .args([
             "-C",
@@ -230,6 +210,7 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
             wt_path.to_string_lossy().as_ref(),
         ])
         .status();
+    wt_guard.disarm();
 
     Ok(())
 }
@@ -257,4 +238,41 @@ fn run(cmd: &mut Command, what: &str) -> Result<()> {
         bail!("{what} failed");
     }
     Ok(())
+}
+
+struct WorktreeGuard {
+    cache_dir: PathBuf,
+    wt_path: PathBuf,
+    active: bool,
+}
+
+impl WorktreeGuard {
+    fn new(cache_dir: PathBuf, wt_path: PathBuf) -> Self {
+        Self {
+            cache_dir,
+            wt_path,
+            active: true,
+        }
+    }
+    fn disarm(&mut self) {
+        self.active = false;
+    }
+}
+
+impl Drop for WorktreeGuard {
+    fn drop(&mut self) {
+        if !self.active {
+            return;
+        }
+        let _ = Command::new("git")
+            .args([
+                "-C",
+                &self.cache_dir.to_string_lossy(),
+                "worktree",
+                "remove",
+                "--force",
+                self.wt_path.to_string_lossy().as_ref(),
+            ])
+            .status();
+    }
 }
