@@ -24,4 +24,3 @@ fn resolve_project_path_rel_and_abs() {
     let abs = resolve_project_path(&proj, "/var/log/syslog");
     assert_eq!(abs, PathBuf::from("/var/log/syslog"));
 }
-

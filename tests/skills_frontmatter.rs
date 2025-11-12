@@ -31,4 +31,3 @@ fn parse_frontmatter_file_invalid() {
     let msg = format!("{}", err);
     assert!(msg.contains("front-matter"), "unexpected error: {}", msg);
 }
-

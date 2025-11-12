@@ -21,16 +21,50 @@ fn list_skills_finds_multiple_entries() {
     let repo_path = repo.path();
 
     // init repo
-    assert!(Command::new("git").args(["-C", repo_path.to_str().unwrap(), "init"]).status().unwrap().success());
+    assert!(Command::new("git")
+        .args(["-C", repo_path.to_str().unwrap(), "init"])
+        .status()
+        .unwrap()
+        .success());
     // minimal identity for commit
-    let _ = Command::new("git").args(["-C", repo_path.to_str().unwrap(), "config", "user.email", "you@example.com"]).status();
-    let _ = Command::new("git").args(["-C", repo_path.to_str().unwrap(), "config", "user.name", "You"]).status();
+    let _ = Command::new("git")
+        .args([
+            "-C",
+            repo_path.to_str().unwrap(),
+            "config",
+            "user.email",
+            "you@example.com",
+        ])
+        .status();
+    let _ = Command::new("git")
+        .args([
+            "-C",
+            repo_path.to_str().unwrap(),
+            "config",
+            "user.name",
+            "You",
+        ])
+        .status();
 
     write_skill(repo_path, "skills/a", "a");
     write_skill(repo_path, "skills/b", "b");
 
-    assert!(Command::new("git").args(["-C", repo_path.to_str().unwrap(), "add", "."]).status().unwrap().success());
-    assert!(Command::new("git").args(["-C", repo_path.to_str().unwrap(), "commit", "-m", "add skills"]).status().unwrap().success());
+    assert!(Command::new("git")
+        .args(["-C", repo_path.to_str().unwrap(), "add", "."])
+        .status()
+        .unwrap()
+        .success());
+    assert!(Command::new("git")
+        .args([
+            "-C",
+            repo_path.to_str().unwrap(),
+            "commit",
+            "-m",
+            "add skills"
+        ])
+        .status()
+        .unwrap()
+        .success());
 
     let skills = list_skills_in_repo(repo_path, "HEAD").expect("list skills");
     let mut names: Vec<_> = skills.iter().map(|s| s.meta.name.clone()).collect();
@@ -41,4 +75,3 @@ fn list_skills_finds_multiple_entries() {
     paths.sort();
     assert_eq!(paths, vec!["skills/a", "skills/b"]);
 }
-
