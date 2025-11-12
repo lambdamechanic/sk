@@ -1,5 +1,4 @@
 use std::fs;
-use std::path::PathBuf;
 
 use sk::skills::parse_frontmatter_file;
 
@@ -27,7 +26,7 @@ fn parse_frontmatter_file_invalid() {
     let p = dir.path().join("SKILL.md");
     fs::write(&p, "no frontmatter here").unwrap();
 
-    let err = parse_frontmatter_file(&p).err().expect("expected error");
-    let msg = format!("{}", err);
-    assert!(msg.contains("front-matter"), "unexpected error: {}", msg);
+    let err = parse_frontmatter_file(&p).expect_err("expected error");
+    let msg = format!("{err}");
+    assert!(msg.contains("front-matter"), "unexpected error: {msg}");
 }

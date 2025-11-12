@@ -9,8 +9,7 @@ fn write_skill(repo: &Path, subdir: &str, name: &str) {
     fs::create_dir_all(&dir).unwrap();
     let skill_md = dir.join("SKILL.md");
     let content = format!(
-        "---\nname: {}\ndescription: {} desc\n---\n\nBody\n",
-        name, name
+        "---\nname: {name}\ndescription: {name} desc\n---\n\nBody\n"
     );
     fs::write(&skill_md, content).unwrap();
 }
