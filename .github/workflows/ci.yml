@@ -7,14 +7,9 @@ on:
     branches: [ main ]
 
 jobs:
-  build-test:
-    name: build + fmt + clippy + test (stable)
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-
+  linux:
+    name: ubuntu - fmt + clippy + build + test
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,12 +25,54 @@ jobs:
           cache-on-failure: true
 
       - name: Cargo fmt (check)
-        if: runner.os == 'Linux'
         run: cargo fmt --all -- --check
 
       - name: Cargo clippy (deny warnings)
-        if: runner.os == 'Linux'
         run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Build
+        run: cargo build --all --locked
+
+      - name: Test
+        run: cargo test --all --locked --no-fail-fast
+
+  macos:
+    name: macos - build + test (gated)
+    needs: linux
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Build
+        run: cargo build --all --locked
+
+      - name: Test
+        run: cargo test --all --locked --no-fail-fast
+
+  windows:
+    name: windows - build + test (gated)
+    needs: linux
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
 
       - name: Build
         run: cargo build --all --locked
@@ -45,6 +82,7 @@ jobs:
 
   coverage:
     name: coverage (ubuntu, cargo-llvm-cov)
+    needs: linux
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
