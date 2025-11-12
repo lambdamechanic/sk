@@ -30,9 +30,11 @@ jobs:
           cache-on-failure: true
 
       - name: Cargo fmt (check)
+        if: runner.os == 'Linux'
         run: cargo fmt --all -- --check
 
       - name: Cargo clippy (deny warnings)
+        if: runner.os == 'Linux'
         run: cargo clippy --all-targets --all-features -- -D warnings
 
       - name: Build
