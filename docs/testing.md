@@ -2,7 +2,7 @@
 
 This repo enforces a lightweight coverage gate in CI and provides a simple local command to run coverage consistently.
 
-- CI runs `cargo llvm-cov` on Ubuntu and fails the job if line coverage drops below 40%.
+- CI runs `cargo llvm-cov` on Ubuntu and fails the job if line coverage drops below 45%.
 - Locally, run `scripts/coverage.sh` (uses the same tooling) and optionally raise the threshold via `THRESHOLD=NN`.
 - Prefer property tests for tricky parsing/IO boundaries, and provide fakes for external effects so business logic stays deterministic and covered.
 
@@ -11,13 +11,19 @@ This mirrors the approach used in the adjacent `isura` repo, adapted for this wo
 ## Quickstart
 
 - Run tests: `cargo test`
-- Run coverage (40% gate): `./scripts/coverage.sh`
+- Run coverage (default 40% gate): `./scripts/coverage.sh`
 - Raise threshold locally (to experiment): `THRESHOLD=50 ./scripts/coverage.sh`
 
 ## CI Behavior
 
 - Coverage runs only on `ubuntu-latest` to keep CI time reasonable across platforms.
-- Threshold starts at 40% so the current codebase passes; we will ratchet this upward as we add tests.
+- Threshold is currently 45% in CI; we ratchet this upward as we add tests.
+
+## Examples
+
+- Front‑matter parsing: see `tests/skills_frontmatter.rs` for validating `SKILL.md` YAML front‑matter via `skills::parse_frontmatter_file`.
+- Repo skill discovery: see `tests/skills_list.rs` for creating a temporary git repo (with `git -C <dir> ...`) and asserting `skills::list_skills_in_repo` finds multiple skills.
+- Path utilities and cache override: see `tests/paths_cache.rs` for using `tempfile` and `SK_CACHE_DIR` to drive `paths::cache_root` deterministically, and for `resolve_project_path` absolute/relative behavior.
 
 ## Testing Guidelines
 
