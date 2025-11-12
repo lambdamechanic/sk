@@ -27,7 +27,11 @@ fn write(path: &Path, contents: &str) {
     fs::write(path, contents).unwrap();
 }
 
-fn init_skill_repo(root: &Path, name: &str, skill_path: &str) -> (PathBuf, String, String) {
+fn init_bare_and_work_with_v1(
+    root: &Path,
+    name: &str,
+    skill_path: &str,
+) -> (PathBuf, PathBuf, String) {
     let bare = root.join("remotes").join(format!("{name}.git"));
     fs::create_dir_all(&bare).unwrap();
     git(&["init", "--bare", "-b", "main"], &bare);
@@ -59,11 +63,41 @@ fn init_skill_repo(root: &Path, name: &str, skill_path: &str) -> (PathBuf, Strin
     )
     .unwrap();
     let v1 = v1.trim().to_string();
+    (bare, work, v1)
+}
 
-    // v2 (touch file)
+#[test]
+fn update_is_cache_only_and_fetches() {
+    let root = tempdir().unwrap();
+    let root = root.path();
+
+    // Prepare bare remote and worktree with v1 committed
+    let (bare, work, v1) = init_bare_and_work_with_v1(root, "skill1", "skill");
+
+    // Prepare project with lockfile referencing this repo
+    let project = root.join("project");
+    fs::create_dir_all(&project).unwrap();
+    git(&["init", "-b", "main"], &project);
+
+    // Pre-clone cache at v1 so it becomes stale after we push v2
+    let cache_root = root.join("cache");
+    let cache_repo = cache_root.join("repos/local/o/r1");
+    fs::create_dir_all(cache_repo.parent().unwrap()).unwrap();
+    git(
+        &[
+            "clone",
+            bare.to_str().unwrap(),
+            cache_repo.to_str().unwrap(),
+        ],
+        cache_repo.parent().unwrap(),
+    );
+    // Ensure origin/HEAD set for default-branch detection
+    git(&["remote", "set-head", "origin", "-a"], &cache_repo);
+
+    // Advance remote to v2 after the cache clone exists (cache is stale)
     fs::OpenOptions::new()
         .append(true)
-        .open(work.join(skill_path).join("file.txt"))
+        .open(work.join("skill").join("file.txt"))
         .unwrap()
         .write_all(b"v2\n")
         .unwrap();
@@ -80,22 +114,8 @@ fn init_skill_repo(root: &Path, name: &str, skill_path: &str) -> (PathBuf, Strin
     )
     .unwrap();
     let v2 = v2.trim().to_string();
-    (bare, v1, v2)
-}
 
-#[test]
-fn update_is_cache_only_and_fetches() {
-    let root = tempdir().unwrap();
-    let root = root.path();
-
-    // Prepare bare remote with two commits
-    let (bare, _v1, v2) = init_skill_repo(root, "skill1", "skill");
-
-    // Prepare project with lockfile referencing this repo
-    let project = root.join("project");
-    fs::create_dir_all(&project).unwrap();
-    git(&["init", "-b", "main"], &project);
-
+    // Build lockfile (value not used by update semantics)
     let lock = json!({
         "version": 1,
         "skills": [
@@ -109,7 +129,7 @@ fn update_is_cache_only_and_fetches() {
                     "skillPath": "skill"
                 },
                 "ref": null,
-                "commit": v2, // value not used by update
+                "commit": v1,
                 "digest": "sha256:deadbeef",
                 "installedAt": "1970-01-01T00:00:00Z"
             }
@@ -119,21 +139,6 @@ fn update_is_cache_only_and_fetches() {
     let lock_path = project.join("skills.lock.json");
     fs::write(&lock_path, serde_json::to_string_pretty(&lock).unwrap()).unwrap();
     let before = fs::read_to_string(&lock_path).unwrap();
-
-    // Pre-clone cache at older state to ensure fetch path is exercised
-    let cache_root = root.join("cache");
-    let cache_repo = cache_root.join("repos/local/o/r1");
-    fs::create_dir_all(cache_repo.parent().unwrap()).unwrap();
-    git(
-        &[
-            "clone",
-            bare.to_str().unwrap(),
-            cache_repo.to_str().unwrap(),
-        ],
-        cache_repo.parent().unwrap(),
-    );
-    // Ensure origin/HEAD set for default-branch detection
-    git(&["remote", "set-head", "origin", "-a"], &cache_repo);
 
     // Run update; it should only touch cache, not the project
     let mut cmd = cargo_bin_cmd!("sk");
