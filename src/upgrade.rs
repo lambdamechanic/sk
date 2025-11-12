@@ -167,14 +167,20 @@ pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
                 fs::remove_dir_all(&temp_sibling).ok();
             }
             fs::create_dir_all(&temp_sibling)?;
-            copy_dir_all(&staged_path, &temp_sibling)?;
+            if let Err(e) = copy_dir_all(&staged_path, &temp_sibling) {
+                apply_err = Some(e);
+                break;
+            }
             // Ensure dest does not exist (moved to backup already), then move temp into place
             if dest.exists() {
                 fs::remove_dir_all(&dest).ok();
             }
-            fs::rename(&temp_sibling, &dest).with_context(|| {
-                format!("rename {} -> {}", temp_sibling.display(), dest.display())
-            })?;
+            if let Err(e) = fs::rename(&temp_sibling, &dest)
+                .with_context(|| format!("rename {} -> {}", temp_sibling.display(), dest.display()))
+            {
+                apply_err = Some(e);
+                break;
+            }
         }
         // Success for this target
         updates.push((name.clone(), new_commit, new_digest));
@@ -207,6 +213,8 @@ pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
     }
 
     fn copy_dir_all(src: &std::path::Path, dst: &std::path::Path) -> Result<()> {
+        let fail_copy = std::env::var("SK_FAIL_COPY").ok().as_deref() == Some("1");
+        let mut seen_files: u64 = 0;
         for entry in walkdir::WalkDir::new(src) {
             let entry = entry?;
             let path = entry.path();
@@ -217,6 +225,11 @@ pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
             } else if entry.file_type().is_file() {
                 if let Some(parent) = target.parent() {
                     fs::create_dir_all(parent)?;
+                }
+                // Simulate copy error after the first file to validate rollback path
+                seen_files += 1;
+                if fail_copy && seen_files == 1 {
+                    return Err(anyhow::anyhow!("simulated copy failure"));
                 }
                 fs::copy(path, &target)
                     .with_context(|| format!("copy {} -> {}", path.display(), target.display()))?;
