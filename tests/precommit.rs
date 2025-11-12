@@ -117,8 +117,15 @@ fn precommit_treats_localhost_exact_only() {
 "#;
     fs::write(project.join("skills.lock.json"), body).unwrap();
     let mut cmd = cargo_bin_cmd!("sk");
-    let out = cmd.current_dir(&project).args(["precommit"]).output().unwrap();
-    assert!(out.status.success(), "precommit should pass for localhost subdomain");
+    let out = cmd
+        .current_dir(&project)
+        .args(["precommit"])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "precommit should pass for localhost subdomain"
+    );
 }
 
 #[test]
@@ -145,6 +152,7 @@ fn precommit_flags_http_localhost_and_ssh_localhost() {
         .args(["precommit"])
         .assert()
         .failure();
-    assert.stderr(predicates::str::contains("local (file:// or localhost) sources"));
+    assert.stderr(predicates::str::contains(
+        "local (file:// or localhost) sources",
+    ));
 }
-

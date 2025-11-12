@@ -53,7 +53,10 @@ fn is_local_source(url: &str, host_field: &str) -> bool {
     }
     // 3) Extract host from common URL forms and match exact localhost/loopback
     // http(s)://host[:port]/...
-    if let Some(rest) = u.strip_prefix("https://").or_else(|| u.strip_prefix("http://")) {
+    if let Some(rest) = u
+        .strip_prefix("https://")
+        .or_else(|| u.strip_prefix("http://"))
+    {
         return host_is_local(extract_netloc(rest));
     }
     // ssh://host[:port]/...
