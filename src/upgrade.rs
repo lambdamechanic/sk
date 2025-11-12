@@ -234,16 +234,24 @@ pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
                 }
                 #[cfg(windows)]
                 {
+                    use std::os::windows::fs as winfs;
                     let real = path.parent().unwrap().join(&link_target);
-                    if real.is_dir() {
-                        fs::create_dir_all(&target)?;
+                    if let Some(parent) = target.parent() {
+                        fs::create_dir_all(parent)?;
+                    }
+                    let created = if real.is_dir() {
+                        winfs::symlink_dir(&link_target, &target).is_ok()
                     } else {
-                        if let Some(parent) = target.parent() {
-                            fs::create_dir_all(parent)?;
+                        winfs::symlink_file(&link_target, &target).is_ok()
+                    };
+                    if !created {
+                        if real.is_dir() {
+                            copy_dir_all(&real, &target)?;
+                        } else {
+                            fs::copy(&real, &target).with_context(|| {
+                                format!("copy {} -> {}", real.display(), target.display())
+                            })?;
                         }
-                        fs::copy(&real, &target).with_context(|| {
-                            format!("copy {} -> {}", real.display(), target.display())
-                        })?;
                     }
                 }
             }
