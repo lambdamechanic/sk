@@ -116,13 +116,28 @@ fn update_is_cache_only_and_fetches() {
     let v2 = v2.trim().to_string();
 
     // Build lockfile (value not used by update semantics)
+    fn path_to_file_url(p: &Path) -> String {
+        #[cfg(windows)]
+        {
+            let mut s = p.to_string_lossy().replace('\\', "/");
+            if s.len() >= 2 && s.as_bytes()[1] == b':' { return format!("file:///{s}"); }
+            if s.starts_with("//") { return format!("file:{s}"); }
+            if s.starts_with('/') { return format!("file://{s}"); }
+            format!("file:///{s}")
+        }
+        #[cfg(not(windows))]
+        {
+            format!("file://{}", p.to_string_lossy())
+        }
+    }
+
     let lock = json!({
         "version": 1,
         "skills": [
             {
                 "installName": "s1",
                 "source": {
-                    "url": format!("file:///{}", bare.to_string_lossy()),
+                    "url": path_to_file_url(&bare),
                     "host": "local",
                     "owner": "o",
                     "repo": "r1",
