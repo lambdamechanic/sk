@@ -67,7 +67,7 @@ fn install_from_file_url_writes_lock_and_files() {
     fn path_to_file_url(p: &Path) -> String {
         #[cfg(windows)]
         {
-            let mut s = p.to_string_lossy().replace('\\', "/");
+            let s = p.to_string_lossy().replace('\\', "/");
             // Drive letter path: C:/...
             if s.len() >= 2 && s.as_bytes()[1] == b':' {
                 return format!("file:///{s}");
