@@ -1,5 +1,4 @@
 use assert_cmd::cargo::cargo_bin_cmd;
-use assert_cmd::prelude::*;
 use predicates::str::contains;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -26,8 +25,7 @@ fn cache_repo_path(root: &Path, host: &str, owner: &str, repo: &str) -> PathBuf 
 
 fn write_lockfile(project: &Path, skills_json: &str) {
     let body = format!(
-        "{{\n  \"version\":1,\n  \"skills\": [\n{}\n  ],\n  \"generatedAt\": \"2020-01-01T00:00:00Z\"\n}}\n",
-        skills_json
+        "{{\n  \"version\":1,\n  \"skills\": [\n{skills_json}\n  ],\n  \"generatedAt\": \"2020-01-01T00:00:00Z\"\n}}\n"
     );
     fs::write(project.join("skills.lock.json"), body).unwrap();
 }
