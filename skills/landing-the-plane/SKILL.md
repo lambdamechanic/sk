@@ -41,6 +41,11 @@ Reject “done” until these tests exist and pass on CI across all OS targets i
 - Push the branch to GitHub and open a PR via `gh pr create` with an informative title/body summarizing the change, testing, and linked bd issues. Landing the plane is **not complete** until a ready-for-review PR exists (even if you iterated on `main`, create a branch at the end and push that history), but usually we will have created a draft PR already.
 - If the PR started as a draft, convert it to "Ready for review" as part of this step so reviewers can pick it up immediately.
 - Once the PR is ready, comment `@codex review` to trigger the automated review. If Codex leaves feedback, address every comment, push the fixes, **reply directly on each feedback thread with the commit hash (or summary) that resolves it**, and comment `@codex review` again until Codex reports no remaining issues.
+
+### Codex Review Trigger (exact string)
+
+- To request a Codex review, your PR comment must contain exactly: `@codex review`.
+- Put it in its own comment (not just the PR body) so the trigger is reliably detected.
 - Finish any `bd update` calls (notes/status changes) **before** your final commit/push so `.beads/issues.jsonl` in the PR matches the tracker state.
 
 ## 4. Tracking & Documentation

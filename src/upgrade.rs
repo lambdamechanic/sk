@@ -168,6 +168,10 @@ pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
             }
             fs::create_dir_all(&temp_sibling)?;
             if let Err(e) = copy_dir_all(&staged_path, &temp_sibling) {
+                // Restore backup for current item before breaking
+                let _ = fs::remove_dir_all(&dest);
+                let _ = fs::rename(&backup, &dest).or_else(|_| copy_dir_all(&backup, &dest));
+                let _ = fs::remove_dir_all(&temp_sibling);
                 apply_err = Some(e);
                 break;
             }
@@ -178,6 +182,10 @@ pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
             if let Err(e) = fs::rename(&temp_sibling, &dest)
                 .with_context(|| format!("rename {} -> {}", temp_sibling.display(), dest.display()))
             {
+                // Restore backup for current item before breaking
+                let _ = fs::remove_dir_all(&dest);
+                let _ = fs::rename(&backup, &dest).or_else(|_| copy_dir_all(&backup, &dest));
+                let _ = fs::remove_dir_all(&temp_sibling);
                 apply_err = Some(e);
                 break;
             }

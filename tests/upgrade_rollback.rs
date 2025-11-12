@@ -197,6 +197,7 @@ fn upgrade_rolls_back_when_apply_fails_mid_loop() {
     // Assert lockfile and on-disk digests unchanged (rollback applied)
     let post_lock = fs::read_to_string(project.join("skills.lock.json")).unwrap();
     assert_eq!(pre_lock, post_lock);
+
     let post_digests: Vec<String> = skills
         .iter()
         .map(|(name, _, _, _)| {
@@ -217,6 +218,7 @@ fn upgrade_rolls_back_when_apply_fails_mid_loop() {
             format!("sha256:{:x}", h.finalize())
         })
         .collect();
+    assert_eq!(pre_digests, post_digests);
     assert_eq!(pre_digests, post_digests);
 }
 
