@@ -78,15 +78,19 @@ fn is_local_source(url: &str, host_field: &str) -> bool {
 }
 
 fn extract_netloc(rest: &str) -> String {
-    // take up to first '/'
-    let host_port = rest.split('/').next().unwrap_or("").to_string();
-    // strip brackets for IPv6 like [::1]:22
+    // Take up to first '/'
+    let mut host_port = rest.split('/').next().unwrap_or("").to_string();
+    // Drop optional userinfo@ prefix (e.g., user@host or user@[::1])
+    if let Some(idx) = host_port.rfind('@') {
+        host_port = host_port[idx + 1..].to_string();
+    }
+    // Strip brackets for IPv6 like [::1]:22
     if host_port.starts_with('[') {
         if let Some(end) = host_port.find(']') {
             return host_port[1..end].to_string();
         }
     }
-    // drop :port
+    // Drop :port
     if let Some((h, _port)) = host_port.split_once(':') {
         return h.to_string();
     }
