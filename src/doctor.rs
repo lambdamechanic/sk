@@ -56,8 +56,12 @@ pub fn run_doctor(apply: bool) -> Result<()> {
             had_issues = true;
             println!("- Missing installed dir: {}", install_dir.display());
             if apply {
-                let cache_dir =
-                    paths::cache_repo_path(&s.source.host, &s.source.owner, &s.source.repo);
+                let cache_dir = paths::resolve_or_primary_cache_path(
+                    &s.source.url,
+                    &s.source.host,
+                    &s.source.owner,
+                    &s.source.repo,
+                );
                 if cache_dir.exists() && git::has_object(&cache_dir, &s.commit).unwrap_or(false) {
                     // attempt rebuild via archive
                     if let Err(e) = crate::install::extract_subdir_from_commit(
@@ -92,7 +96,12 @@ pub fn run_doctor(apply: bool) -> Result<()> {
             }
         }
         // cache presence
-        let cache_dir = paths::cache_repo_path(&s.source.host, &s.source.owner, &s.source.repo);
+        let cache_dir = paths::resolve_or_primary_cache_path(
+            &s.source.url,
+            &s.source.host,
+            &s.source.owner,
+            &s.source.repo,
+        );
         referenced_caches.insert(cache_dir.clone());
         if !cache_dir.exists() {
             had_issues = true;

@@ -24,7 +24,8 @@ pub fn run_install(args: InstallArgs) -> Result<()> {
 
     // Parse repo and ensure cache
     let spec = git::parse_repo_input(args.repo, args.https, &cfg.default_host)?;
-    let cache_dir = paths::cache_repo_path(&spec.host, &spec.owner, &spec.repo);
+    let cache_dir =
+        paths::resolve_or_primary_cache_path(&spec.url, &spec.host, &spec.owner, &spec.repo);
     git::ensure_cached_repo(&cache_dir, &spec)?;
     let default_branch = git::detect_or_set_default_branch(&cache_dir, &spec.url)?;
 

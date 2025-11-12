@@ -81,7 +81,18 @@ fn update_is_cache_only_and_fetches() {
 
     // Pre-clone cache at v1 so it becomes stale after we push v2
     let cache_root = root.join("cache");
-    let cache_repo = cache_root.join("repos/local/o/r1");
+    // Hash-only cache leaf for local file:// URLs: repo-<sha256(url)[:12]>
+    fn hashed_leaf(url: &str, repo: &str) -> String {
+        use sha2::{Digest, Sha256};
+        let h = Sha256::digest(url.as_bytes());
+        let hex = format!("{h:x}");
+        let short = &hex[..12];
+        format!("{repo}-{short}")
+    }
+    let url1 = path_to_file_url(&bare);
+    let cache_repo = cache_root
+        .join("repos/local/o")
+        .join(hashed_leaf(&url1, "r1"));
     fs::create_dir_all(cache_repo.parent().unwrap()).unwrap();
     git(
         &[
@@ -116,13 +127,34 @@ fn update_is_cache_only_and_fetches() {
     let v2 = v2.trim().to_string();
 
     // Build lockfile (value not used by update semantics)
+    fn path_to_file_url(p: &Path) -> String {
+        #[cfg(windows)]
+        {
+            let s = p.to_string_lossy().replace('\\', "/");
+            if s.len() >= 2 && s.as_bytes()[1] == b':' {
+                return format!("file:///{s}");
+            }
+            if s.starts_with("//") {
+                return format!("file:{s}");
+            }
+            if s.starts_with('/') {
+                return format!("file://{s}");
+            }
+            format!("file:///{s}")
+        }
+        #[cfg(not(windows))]
+        {
+            format!("file://{}", p.to_string_lossy())
+        }
+    }
+
     let lock = json!({
         "version": 1,
         "skills": [
             {
                 "installName": "s1",
                 "source": {
-                    "url": format!("file:///{}", bare.to_string_lossy()),
+                    "url": url1,
                     "host": "local",
                     "owner": "o",
                     "repo": "r1",

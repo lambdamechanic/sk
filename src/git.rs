@@ -1,4 +1,6 @@
 use anyhow::{bail, Context, Result};
+use gix_url as gurl;
+use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -23,7 +25,7 @@ pub fn ensure_git_repo() -> Result<PathBuf> {
 }
 
 pub fn parse_repo_input(input: &str, https: bool, default_host: &str) -> Result<RepoSpec> {
-    // Accept forms: @owner/repo, git@github.com:owner/repo.git, https://github.com/owner/repo(.git)
+    // Shorthand: @owner/repo -> choose https or ssh on default_host
     if let Some(rest) = input.strip_prefix('@') {
         let (owner, repo) = rest
             .split_once('/')
@@ -40,52 +42,58 @@ pub fn parse_repo_input(input: &str, https: bool, default_host: &str) -> Result<
             repo: repo.to_string(),
         });
     }
-    // ssh short form
-    if input.starts_with("git@github.com:") || input.starts_with("git@") {
-        // Parse git@host:owner/repo(.git)
-        let after_colon = input.split_once(':').context("malformed ssh URL")?.1;
-        let host = input
-            .split_once('@')
-            .context("malformed ssh URL")?
-            .1
-            .split(':')
-            .next()
-            .unwrap()
-            .to_string();
-        let path = after_colon.trim_end_matches(".git");
-        let (owner, repo) = path.split_once('/').context("malformed ssh URL path")?;
-        return Ok(RepoSpec {
-            url: input.to_string(),
-            host,
-            owner: owner.to_string(),
-            repo: repo.to_string(),
-        });
-    }
-    // https
-    if input.starts_with("https://") || input.starts_with("http://") || input.starts_with("ssh://")
-    {
-        let url_s = input.to_string();
-        // naive parse of host/owner/repo for cache path
-        let no_proto = url_s.split("//").nth(1).unwrap_or("").to_string();
-        let mut parts = no_proto.split('/');
-        let host_s = parts.next().unwrap_or("").to_string();
-        let owner_s = parts.next().unwrap_or("").to_string();
-        let repo_s = parts
-            .next()
-            .unwrap_or("")
-            .trim_end_matches(".git")
-            .to_string();
-        if host_s.is_empty() || owner_s.is_empty() || repo_s.is_empty() {
-            bail!("cannot parse repo triplet from URL: {url_s}");
+    // Use gix-url for all other forms (ssh, scp-like, https/http, file)
+    let parsed =
+        gurl::Url::try_from(input).map_err(|_| anyhow::anyhow!("unable to parse repo URL"))?;
+    match parsed.scheme {
+        gurl::Scheme::File => {
+            // Derive owner/repo from filesystem path: parent-dir and basename (without .git)
+            // Path is stored as bytes and typically starts with '/'
+            use std::path::Path;
+            let path_bytes: &[u8] = parsed.path.as_ref();
+            let path_str: Cow<'_, str> = String::from_utf8_lossy(path_bytes);
+            let p = Path::new(path_str.as_ref());
+            let repo_name = p.file_name().and_then(|s| s.to_str()).unwrap_or("repo");
+            let repo = repo_name.trim_end_matches(".git").to_string();
+            let owner = p
+                .parent()
+                .and_then(|pp| pp.file_name())
+                .and_then(|s| s.to_str())
+                .unwrap_or("local")
+                .to_string();
+            Ok(RepoSpec {
+                url: input.to_string(),
+                host: "local".to_string(),
+                owner,
+                repo,
+            })
         }
-        return Ok(RepoSpec {
-            url: url_s,
-            host: host_s,
-            owner: owner_s,
-            repo: repo_s,
-        });
+        _ => {
+            // owner/repo come from the URL path; trim leading '/', drop trailing .git
+            let host = parsed
+                .host()
+                .map(|s| s.to_string())
+                .ok_or_else(|| anyhow::anyhow!("missing host in URL"))?;
+            let path_bytes: &[u8] = parsed.path.as_ref();
+            let path_s = String::from_utf8_lossy(path_bytes);
+            let mut comps = path_s.trim_start_matches('/').split('/');
+            let owner = comps.next().unwrap_or("").to_string();
+            let repo = comps
+                .next()
+                .unwrap_or("")
+                .trim_end_matches(".git")
+                .to_string();
+            if owner.is_empty() || repo.is_empty() {
+                bail!("cannot parse owner/repo from URL path: {path_s}");
+            }
+            Ok(RepoSpec {
+                url: input.to_string(),
+                host,
+                owner,
+                repo,
+            })
+        }
     }
-    bail!("Unrecognized repo input: {input}")
 }
 
 pub fn ensure_cached_repo(cache_dir: &Path, spec: &RepoSpec) -> Result<()> {

@@ -57,8 +57,12 @@ pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
             None => true,
         };
 
-        let cache_dir =
-            paths::cache_repo_path(&skill.source.host, &skill.source.owner, &skill.source.repo);
+        let cache_dir = paths::resolve_or_primary_cache_path(
+            &skill.source.url,
+            &skill.source.host,
+            &skill.source.owner,
+            &skill.source.repo,
+        );
         // Always refresh cache to see latest remote state
         let spec = git::RepoSpec {
             url: skill.source.url.clone(),
@@ -116,7 +120,12 @@ pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
     let mut staged: Vec<(String, std::path::PathBuf, String, String)> = vec![]; // (name, staged_path, new_commit, new_digest)
     for (name, dest, new_commit) in &plan {
         let s = targets.iter().find(|t| t.install_name == *name).unwrap();
-        let cache_dir = paths::cache_repo_path(&s.source.host, &s.source.owner, &s.source.repo);
+        let cache_dir = paths::resolve_or_primary_cache_path(
+            &s.source.url,
+            &s.source.host,
+            &s.source.owner,
+            &s.source.repo,
+        );
         let staged_path = staging.path().join(name);
         fs::create_dir_all(&staged_path)?;
         install::extract_subdir_from_commit(
