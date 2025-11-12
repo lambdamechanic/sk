@@ -10,6 +10,7 @@ mod precommit;
 mod skills;
 mod update;
 mod upgrade;
+mod sync;
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -55,10 +56,12 @@ fn main() -> Result<()> {
             branch,
             message,
             root,
-        } => {
-            let _ = (installed_name, branch, message);
-            cmd_unimplemented("sync-back", false, root.as_deref())
-        }
+        } => sync::run_sync_back(sync::SyncBackArgs {
+            installed_name: &installed_name,
+            branch: branch.as_deref(),
+            message: message.as_deref(),
+            root: root.as_deref(),
+        }),
         Commands::Doctor { apply } => doctor::run_doctor(apply),
         Commands::Config { cmd } => cmd_config(cmd),
         Commands::Precommit { allow_local } => precommit::run_precommit(allow_local),
