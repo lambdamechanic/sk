@@ -310,32 +310,6 @@ fn purge_children_except_git(dir: &std::path::Path) -> Result<()> {
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::purge_children_except_git;
-    use std::fs;
-    use tempfile::tempdir;
-
-    #[test]
-    fn purge_children_preserves_git_and_removes_others() {
-        let td = tempdir().unwrap();
-        let root = td.path();
-
-        // Create a fake .git directory and other entries
-        fs::create_dir_all(root.join(".git")).unwrap();
-        fs::write(root.join(".git").join("HEAD"), b"ref: refs/heads/main\n").unwrap();
-        fs::create_dir_all(root.join("subdir")).unwrap();
-        fs::write(root.join("file.txt"), b"hello").unwrap();
-
-        purge_children_except_git(root).unwrap();
-
-        // .git remains; others removed
-        assert!(root.join(".git").exists());
-        assert!(!root.join("subdir").exists());
-        assert!(!root.join("file.txt").exists());
-    }
-}
-
 fn default_branch_name(name: &str) -> String {
     let sanitized = name
         .chars()
@@ -395,5 +369,31 @@ impl Drop for WorktreeGuard {
                 self.wt_path.to_string_lossy().as_ref(),
             ])
             .status();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::purge_children_except_git;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn purge_children_preserves_git_and_removes_others() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+
+        // Create a fake .git directory and other entries
+        fs::create_dir_all(root.join(".git")).unwrap();
+        fs::write(root.join(".git").join("HEAD"), b"ref: refs/heads/main\n").unwrap();
+        fs::create_dir_all(root.join("subdir")).unwrap();
+        fs::write(root.join("file.txt"), b"hello").unwrap();
+
+        purge_children_except_git(root).unwrap();
+
+        // .git remains; others removed
+        assert!(root.join(".git").exists());
+        assert!(!root.join("subdir").exists());
+        assert!(!root.join("file.txt").exists());
     }
 }
