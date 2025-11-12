@@ -46,6 +46,11 @@ Reject “done” until these tests exist and pass on CI across all OS targets i
   ```
   Or via GitHub CLI directly: `gh pr ready`.
 - Once the PR is ready, comment `@codex review` to trigger the automated review. If Codex leaves feedback, address every comment, push the fixes, **reply directly on each feedback thread with the commit hash (or summary) that resolves it**, and comment `@codex review` again until Codex reports no remaining issues.
+ - Before asking for final review, check for any unresolved Codex inline threads without a human reply:
+   ```bash
+   scripts/codex-unreplied.sh [<pr-number>]
+   ```
+   Reply inline or resolve threads, then re-run to ensure it prints nothing.
 
 ### Codex Review Trigger (exact string)
 
