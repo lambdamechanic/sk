@@ -34,7 +34,7 @@ pub fn cache_repo_path(host: &str, owner: &str, repo: &str) -> PathBuf {
 fn hashed_local_leaf(url: &str, repo: &str) -> Option<String> {
     if url.starts_with("file://") {
         let h = Sha256::digest(url.as_bytes());
-        let hex = format!("{:x}", h);
+        let hex = format!("{h:x}");
         let short = &hex[..12];
         Some(format!("{repo}-{short}"))
     } else {
