@@ -120,9 +120,15 @@ fn update_is_cache_only_and_fetches() {
         #[cfg(windows)]
         {
             let mut s = p.to_string_lossy().replace('\\', "/");
-            if s.len() >= 2 && s.as_bytes()[1] == b':' { return format!("file:///{s}"); }
-            if s.starts_with("//") { return format!("file:{s}"); }
-            if s.starts_with('/') { return format!("file://{s}"); }
+            if s.len() >= 2 && s.as_bytes()[1] == b':' {
+                return format!("file:///{s}");
+            }
+            if s.starts_with("//") {
+                return format!("file:{s}");
+            }
+            if s.starts_with('/') {
+                return format!("file://{s}");
+            }
             format!("file:///{s}")
         }
         #[cfg(not(windows))]
