@@ -199,8 +199,8 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
         bail!("git push failed: {}", combined.trim());
     }
 
-    // Success: remove worktree now and disarm guard
-    let _ = Command::new("git")
+    // Success: attempt to remove worktree now; only disarm guard on success
+    let rm_status = Command::new("git")
         .args([
             "-C",
             &cache_dir.to_string_lossy(),
@@ -210,7 +210,17 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
             wt_path.to_string_lossy().as_ref(),
         ])
         .status();
-    wt_guard.disarm();
+    if let Ok(st) = rm_status {
+        if st.success() {
+            wt_guard.disarm();
+        } else {
+            eprintln!(
+                "Warning: git worktree remove failed (status {st}). Guard will retry on drop."
+            );
+        }
+    } else {
+        eprintln!("Warning: failed to spawn 'git worktree remove'. Guard will retry on drop.");
+    }
 
     Ok(())
 }
