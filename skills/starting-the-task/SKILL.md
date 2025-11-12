@@ -23,10 +23,14 @@ Use this checklist any time you begin work on a bd issue (or whenever the user s
    - `bd update <id> --status in_progress --notes "Starting work"` so the tracker reflects the new ownership/status.
    - If multiple repos are involved, repeat for each.
 
-4. **Open a Draft PR**
-   - Every user-requested task or subtask must live under an open pull request so CI runs and reviewers can follow along. If a PR already exists for the parent effort, keep working on that one; otherwise create a new branch+PR for this task.
-   - Source the PR title/description from the bd issue: include its summary, acceptance criteria, and a link/reference to the bd id so GitHub mirrors the tracker.
-   - Mark the PR as **draft** (`gh pr create --draft ...`) until the task is ready to land; this keeps tests running without implying the work is review-ready.
+4. **Open a Draft PR (immediately)**
+   - As soon as you create the branch, open a **draft PR** so CI runs and stakeholders can track progress. If a PR already exists for the parent effort, continue on that one.
+   - Source the PR title/description from the bd issue: include its summary, acceptance criteria, and a link/reference to the bd id.
+   - Preferred command (uses GitHub CLI):
+     ```bash
+     scripts/pr-draft.sh "<short title incl. bd id>" [body.md]
+     ```
+     Fallback: `gh pr create --draft --title "..." --body-file body.md` after `git push -u origin <branch>`.
 
 5. **Sync & Tooling**
    - Ensure `git pull --rebase` (or equivalent) so you’re working from the latest remote `main`.

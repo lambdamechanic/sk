@@ -40,6 +40,11 @@ Reject “done” until these tests exist and pass on CI across all OS targets i
 - Squash or reorder commits into one or more coherent changesets with descriptive messages.
 - Push the branch to GitHub and open a PR via `gh pr create` with an informative title/body summarizing the change, testing, and linked bd issues. Landing the plane is **not complete** until a ready-for-review PR exists (even if you iterated on `main`, create a branch at the end and push that history), but usually we will have created a draft PR already.
 - If the PR started as a draft, convert it to "Ready for review" as part of this step so reviewers can pick it up immediately.
+- Preferred helper command to flip to ready:
+  ```bash
+  scripts/pr-ready.sh
+  ```
+  Or via GitHub CLI directly: `gh pr ready`.
 - Once the PR is ready, comment `@codex review` to trigger the automated review. If Codex leaves feedback, address every comment, push the fixes, **reply directly on each feedback thread with the commit hash (or summary) that resolves it**, and comment `@codex review` again until Codex reports no remaining issues.
 
 ### Codex Review Trigger (exact string)
