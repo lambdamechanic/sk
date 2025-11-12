@@ -74,17 +74,16 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
     let wt_dir = TempDir::new().context("create worktree dir")?;
     let wt_path = wt_dir.path().to_path_buf();
     run(
-        Command::new("git")
-            .args([
-                "-C",
-                &cache_dir.to_string_lossy(),
-                "worktree",
-                "add",
-                "-b",
-                &branch_name,
-                wt_path.to_string_lossy().as_ref(),
-                &skill.commit,
-            ]),
+        Command::new("git").args([
+            "-C",
+            &cache_dir.to_string_lossy(),
+            "worktree",
+            "add",
+            "-b",
+            &branch_name,
+            wt_path.to_string_lossy().as_ref(),
+            &skill.commit,
+        ]),
         "git worktree add",
     )?;
 
@@ -108,10 +107,7 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
                     "{}/",
                     dest_installed.to_string_lossy().trim_end_matches('/')
                 ),
-                &format!(
-                    "{}/",
-                    target_subdir.to_string_lossy().trim_end_matches('/')
-                ),
+                &format!("{}/", target_subdir.to_string_lossy().trim_end_matches('/')),
             ]),
             "rsync contents",
         )?;
@@ -137,8 +133,7 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
 
     // Commit changes
     run(
-        Command::new("git")
-            .args(["-C", wt_path.to_string_lossy().as_ref(), "add", "-A"]),
+        Command::new("git").args(["-C", wt_path.to_string_lossy().as_ref(), "add", "-A"]),
         "git add",
     )?;
     let msg = args
@@ -146,7 +141,13 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
         .map(|s| s.to_string())
         .unwrap_or_else(|| default_commit_message(args.installed_name));
     let commit_status = Command::new("git")
-        .args(["-C", wt_path.to_string_lossy().as_ref(), "commit", "-m", &msg])
+        .args([
+            "-C",
+            wt_path.to_string_lossy().as_ref(),
+            "commit",
+            "-m",
+            &msg,
+        ])
         .status()
         .context("git commit failed")?;
     if !commit_status.success() {
@@ -180,21 +181,12 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
         .context("git push failed")?
         .success();
     if push_ok {
-        println!(
-            "Pushed branch '{branch}' to origin for {owner}/{repo}.",
-            branch = branch_name,
-            owner = skill.source.owner,
-            repo = skill.source.repo
-        );
-        println!(
-            "PR hint: gh pr create --fill --head {branch}",
-            branch = branch_name
-        );
+        let owner = &skill.source.owner;
+        let repo = &skill.source.repo;
+        println!("Pushed branch '{branch_name}' to origin for {owner}/{repo}.");
+        println!("PR hint: gh pr create --fill --head {branch_name}");
     } else {
-        eprintln!(
-            "Push failed for branch '{branch}'. You may not have write access.",
-            branch = branch_name
-        );
+        eprintln!("Push failed for branch '{branch_name}'. You may not have write access.");
     }
 
     // Remove worktree

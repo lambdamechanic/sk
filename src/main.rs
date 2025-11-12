@@ -8,9 +8,9 @@ mod lock;
 mod paths;
 mod precommit;
 mod skills;
+mod sync;
 mod update;
 mod upgrade;
-mod sync;
 
 use anyhow::{Context, Result};
 use clap::Parser;
