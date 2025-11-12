@@ -1,5 +1,6 @@
 use crate::{digest, git, lock, paths};
 use anyhow::{Context, Result};
+use chrono::Utc;
 use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
@@ -14,6 +15,7 @@ pub fn run_doctor(apply: bool) -> Result<()> {
     let data = fs::read(&lock_path)?;
     let lf: lock::Lockfile = serde_json::from_slice(&data).context("parse lockfile")?;
     let mut had_issues = false;
+    let mut orphans_to_drop: Vec<String> = Vec::new();
 
     // Detect duplicate installName values in the lockfile
     {
@@ -51,6 +53,8 @@ pub fn run_doctor(apply: bool) -> Result<()> {
                     }
                 } else {
                     println!("  Cannot rebuild: cache/commit missing.");
+                    // mark for removal from lockfile on apply
+                    orphans_to_drop.push(s.install_name.clone());
                 }
             }
         } else {
@@ -138,6 +142,30 @@ pub fn run_doctor(apply: bool) -> Result<()> {
             }
         }
     }
+    // Normalize lockfile and drop orphan entries when applying
+    if apply {
+        let mut lf_new = lf.clone();
+        if !orphans_to_drop.is_empty() {
+            let before = lf_new.skills.len();
+            lf_new
+                .skills
+                .retain(|s| !orphans_to_drop.contains(&s.install_name));
+            let removed = before - lf_new.skills.len();
+            println!("Removed {removed} orphan lock entries.");
+            had_issues = true;
+        }
+        // Sort by installName for stable diffs
+        lf_new
+            .skills
+            .sort_by(|a, b| a.install_name.cmp(&b.install_name));
+        lf_new.generated_at = Utc::now().to_rfc3339();
+        // Save only if changes differ from original lockfile
+        if serde_json::to_string(&lf_new)? != serde_json::to_string(&lf)? {
+            crate::lock::save_lockfile(&lock_path, &lf_new)?;
+            println!("Normalized lockfile (ordering/timestamps).");
+        }
+    }
+
     if !had_issues {
         println!("All checks passed.");
     }
