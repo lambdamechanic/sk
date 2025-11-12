@@ -15,7 +15,8 @@ pub fn run_precommit(allow_local: bool) -> Result<()> {
     let mut local_entries: Vec<String> = vec![];
     for s in &lf.skills {
         let url = s.source.url.as_str();
-        let is_local = url.starts_with("file://") || s.source.host == "local" || url.contains("localhost");
+        let is_local =
+            url.starts_with("file://") || s.source.host == "local" || url.contains("localhost");
         if is_local {
             local_entries.push(format!(
                 "{} -> {} (path: {})",
@@ -25,7 +26,9 @@ pub fn run_precommit(allow_local: bool) -> Result<()> {
     }
 
     if !local_entries.is_empty() {
-        eprintln!("sk precommit: detected local (file:// or localhost) sources in skills.lock.json:");
+        eprintln!(
+            "sk precommit: detected local (file:// or localhost) sources in skills.lock.json:"
+        );
         for e in &local_entries {
             eprintln!("  - {e}");
         }
@@ -38,4 +41,3 @@ pub fn run_precommit(allow_local: bool) -> Result<()> {
     }
     Ok(())
 }
-

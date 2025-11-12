@@ -6,10 +6,10 @@ mod git;
 mod install;
 mod lock;
 mod paths;
+mod precommit;
 mod skills;
 mod update;
 mod upgrade;
-mod precommit;
 
 use anyhow::{Context, Result};
 use clap::Parser;

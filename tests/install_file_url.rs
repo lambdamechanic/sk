@@ -1,14 +1,22 @@
 use assert_cmd::cargo::cargo_bin_cmd;
 use serde_json::Value as Json;
 use std::fs;
-use std::io::Write;
 use std::path::Path;
 use std::process::Command;
 use tempfile::tempdir;
 
 fn git(args: &[&str], cwd: &Path) {
-    let status = Command::new("git").args(args).current_dir(cwd).status().unwrap();
-    assert!(status.success(), "git {:?} failed in {}", args, cwd.display());
+    let status = Command::new("git")
+        .args(args)
+        .current_dir(cwd)
+        .status()
+        .unwrap();
+    assert!(
+        status.success(),
+        "git {:?} failed in {}",
+        args,
+        cwd.display()
+    );
 }
 
 #[test]
@@ -64,13 +72,15 @@ fn install_from_file_url_writes_lock_and_files() {
         .args(["install", &file_url, "sfile", "--path", "skill"])
         .output()
         .unwrap();
-    assert!(out.status.success(), "sk install failed: {:?}", out);
+    assert!(out.status.success(), "sk install failed: {out:?}");
 
     // Verify installed directory exists
     assert!(project.join("skills/sfile/SKILL.md").exists());
 
     // Verify lockfile contents
-    let lock: Json = serde_json::from_str(&fs::read_to_string(project.join("skills.lock.json")).unwrap()).unwrap();
+    let lock: Json =
+        serde_json::from_str(&fs::read_to_string(project.join("skills.lock.json")).unwrap())
+            .unwrap();
     let skills = lock["skills"].as_array().unwrap();
     assert_eq!(skills.len(), 1);
     let entry = &skills[0];

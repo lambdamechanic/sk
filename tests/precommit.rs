@@ -88,7 +88,13 @@ fn precommit_passes_on_remote_sources() {
     fs::write(project.join("skills.lock.json"), body).unwrap();
 
     let mut cmd = cargo_bin_cmd!("sk");
-    let out = cmd.current_dir(&project).args(["precommit"]).output().unwrap();
-    assert!(out.status.success(), "precommit should pass for remote sources");
+    let out = cmd
+        .current_dir(&project)
+        .args(["precommit"])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "precommit should pass for remote sources"
+    );
 }
-
