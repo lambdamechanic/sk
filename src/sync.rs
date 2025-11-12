@@ -116,12 +116,26 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
             "rsync contents",
         )?;
     } else {
-        // Fallback: destructive copy by removing target then copying over
+        // Fallback: destructive copy when rsync is unavailable.
+        // Special-case root-level skills (skill_path == ".") to avoid deleting the
+        // worktree itself or attempting to remove '.'. Instead, purge only the
+        // children of the worktree root while preserving VCS metadata like '.git'.
+        let is_root =
+            skill.source.skill_path.trim().is_empty() || skill.source.skill_path.trim() == ".";
+
         if target_subdir.exists() {
-            fs::remove_dir_all(&target_subdir)
-                .with_context(|| format!("remove {}", target_subdir.display()))?;
+            if is_root {
+                purge_children_except_git(&target_subdir)
+                    .with_context(|| format!("purge children in {}", target_subdir.display()))?;
+            } else {
+                fs::remove_dir_all(&target_subdir)
+                    .with_context(|| format!("remove {}", target_subdir.display()))?;
+            }
         }
+
+        // Ensure destination directory exists (no-op for root).
         fs::create_dir_all(&target_subdir)?;
+
         run(
             Command::new("bash").args([
                 "-lc",
@@ -273,6 +287,53 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
     }
 
     Ok(())
+}
+
+// Remove all direct children of `dir`, except entries named '.git'.
+fn purge_children_except_git(dir: &std::path::Path) -> Result<()> {
+    if !dir.is_dir() {
+        return Ok(());
+    }
+    for entry in fs::read_dir(dir).with_context(|| format!("read_dir {}", dir.display()))? {
+        let entry = entry?;
+        let name = entry.file_name();
+        if name == ".git" {
+            continue;
+        }
+        let path = entry.path();
+        if path.is_dir() {
+            fs::remove_dir_all(&path).with_context(|| format!("remove {}", path.display()))?;
+        } else {
+            fs::remove_file(&path).with_context(|| format!("remove {}", path.display()))?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::purge_children_except_git;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn purge_children_preserves_git_and_removes_others() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+
+        // Create a fake .git directory and other entries
+        fs::create_dir_all(root.join(".git")).unwrap();
+        fs::write(root.join(".git").join("HEAD"), b"ref: refs/heads/main\n").unwrap();
+        fs::create_dir_all(root.join("subdir")).unwrap();
+        fs::write(root.join("file.txt"), b"hello").unwrap();
+
+        purge_children_except_git(root).unwrap();
+
+        // .git remains; others removed
+        assert!(root.join(".git").exists());
+        assert!(!root.join("subdir").exists());
+        assert!(!root.join("file.txt").exists());
+    }
 }
 
 fn default_branch_name(name: &str) -> String {
