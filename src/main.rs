@@ -9,6 +9,7 @@ mod paths;
 mod skills;
 mod update;
 mod upgrade;
+mod precommit;
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -60,6 +61,7 @@ fn main() -> Result<()> {
         }
         Commands::Doctor { apply } => doctor::run_doctor(apply),
         Commands::Config { cmd } => cmd_config(cmd),
+        Commands::Precommit { allow_local } => precommit::run_precommit(allow_local),
         Commands::Install {
             repo,
             skill_name,

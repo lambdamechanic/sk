@@ -24,6 +24,41 @@ pub fn ensure_git_repo() -> Result<PathBuf> {
 
 pub fn parse_repo_input(input: &str, https: bool, default_host: &str) -> Result<RepoSpec> {
     // Accept forms: @owner/repo, git@github.com:owner/repo.git, https://github.com/owner/repo(.git)
+    // Also accept local file URLs: file:///abs/path/to/repo(.git)
+    if input.starts_with("file://") {
+        // Normalize file://localhost/... to file:///...
+        let mut rest = &input[7..]; // after scheme
+        if let Some(r) = rest.strip_prefix("localhost/") {
+            rest = r;
+            // ensure leading slash for absolute path
+            if !rest.starts_with('/') {
+                // Prepend a slash if missing to form /path
+                // This path handling is best-effort; git understands file:///...
+            }
+        }
+        // Derive owner/repo from path components where possible
+        // Example: file:///tmp/remotes/myrepo.git -> owner: remotes, repo: myrepo
+        use std::path::Path;
+        let path_part = if rest.starts_with('/') { rest } else { &format!("/{}", rest) };
+        let p = Path::new(path_part);
+        let repo_name = p
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("repo");
+        let repo = repo_name.trim_end_matches(".git").to_string();
+        let owner = p
+            .parent()
+            .and_then(|pp| pp.file_name())
+            .and_then(|s| s.to_str())
+            .unwrap_or("local")
+            .to_string();
+        return Ok(RepoSpec {
+            url: input.to_string(),
+            host: "local".to_string(),
+            owner,
+            repo,
+        });
+    }
     if let Some(rest) = input.strip_prefix('@') {
         let (owner, repo) = rest
             .split_once('/')
@@ -62,7 +97,9 @@ pub fn parse_repo_input(input: &str, https: bool, default_host: &str) -> Result<
         });
     }
     // https
-    if input.starts_with("https://") || input.starts_with("http://") || input.starts_with("ssh://")
+    if input.starts_with("https://")
+        || input.starts_with("http://")
+        || input.starts_with("ssh://")
     {
         let url_s = input.to_string();
         // naive parse of host/owner/repo for cache path

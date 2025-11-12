@@ -101,6 +101,11 @@ pub enum Commands {
         #[command(subcommand)]
         cmd: ConfigCmd,
     },
+    #[command(about = "Pre-commit checks (warn on local sources)")]
+    Precommit {
+        #[arg(long, help = "Allow local file:// sources without failing")]
+        allow_local: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]
