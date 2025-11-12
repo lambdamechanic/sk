@@ -8,6 +8,7 @@ mod lock;
 mod paths;
 mod skills;
 mod update;
+mod upgrade;
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -33,10 +34,13 @@ fn main() -> Result<()> {
             root,
             dry_run,
             include_pinned,
-        } => {
-            let _ = (target, r#ref, dry_run, include_pinned);
-            cmd_unimplemented("upgrade", false, root.as_deref())
-        }
+        } => upgrade::run_upgrade(upgrade::UpgradeArgs {
+            target: &target,
+            r#ref: r#ref.as_deref(),
+            root: root.as_deref(),
+            dry_run,
+            include_pinned,
+        }),
         Commands::Remove {
             installed_name,
             root,
