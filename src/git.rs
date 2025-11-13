@@ -147,9 +147,9 @@ fn read_origin_head(cache_dir: &Path) -> Result<Option<String>> {
             "--verify",
             &format!("refs/remotes/origin/{branch}"),
         ])
-        .status()
+        .output()
         .context("git show-ref failed")?;
-    if !verify.success() {
+    if !verify.status.success() {
         return Ok(None);
     }
     Ok(Some(branch))
@@ -180,11 +180,11 @@ fn query_remote_default_branch(remote: &str) -> Result<String> {
 
 fn set_origin_head(cache_dir: &Path, branch: &str) -> Result<()> {
     let cache = cache_dir.to_string_lossy();
-    let status = Command::new("git")
+    let out = Command::new("git")
         .args(["-C", &cache, "remote", "set-head", "origin", branch])
-        .status()
+        .output()
         .context("git remote set-head failed")?;
-    if !status.success() {
+    if !out.status.success() {
         bail!("git remote set-head origin {branch} failed");
     }
     Ok(())
