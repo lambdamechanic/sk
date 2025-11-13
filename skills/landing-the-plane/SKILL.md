@@ -23,7 +23,7 @@ When someone asks you to "land the plane", they want you to wrap up the current 
 If the work touches any multi-item “apply/upgrade” loop, add property/integration tests that prove these invariants:
 
 - Atomicity on failure: if any target fails during the apply loop, previously processed targets are rolled back (or the lockfile is advanced in step with on-disk changes). The repository must never land in a state where on-disk contents and lockfile disagree, causing future runs to refuse to proceed.
-- Lockfile sync: the lock is only written after all filesystem changes succeed; if the user supplies a ref override (`--ref`), the lockfile’s `ref` is updated even when the resolved commit is unchanged.
+- Lockfile sync: the lock is only written after all filesystem changes succeed; it always captures the exact commit SHA/digest that landed so later upgrades/status checks have an immutable reference point.
 - Cross-device safety: staging/swap logic works when the install root lives on a different filesystem (e.g., rename EXDEV). Include a test that simulates cross-device behavior and asserts correctness.
 - Symlink preservation: upgrades preserve symlinks inside upgraded trees (recreate symlinks on Unix; best-effort on Windows).
 

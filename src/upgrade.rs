@@ -5,11 +5,9 @@ use std::fs;
 use tempfile::TempDir;
 
 pub struct UpgradeArgs<'a> {
-    pub target: &'a str,        // installed name or "--all"
-    pub r#ref: Option<&'a str>, // optional override ref
+    pub target: &'a str, // installed name or "--all"
     pub root: Option<&'a str>,
     pub dry_run: bool,
-    pub include_pinned: bool,
 }
 
 pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
@@ -72,28 +70,11 @@ pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
         };
         git::ensure_cached_repo(&cache_dir, &spec)?;
 
-        let effective_ref: Option<String> = if let Some(r) = args.r#ref {
-            Some(r.to_string())
-        } else {
-            skill.ref_.clone()
-        };
-        let (new_commit, pinned): (String, bool) = match effective_ref.as_deref() {
-            None => {
-                let default = git::detect_or_set_default_branch(&cache_dir, &skill.source.url)?;
-                let rev = format!("refs/remotes/origin/{default}");
-                (git::rev_parse(&cache_dir, &rev)?, false)
-            }
-            Some(r) => {
-                if let Ok(Some(_)) = git::remote_branch_tip(&cache_dir, r) {
-                    let rev = format!("refs/remotes/origin/{r}");
-                    (git::rev_parse(&cache_dir, &rev)?, false)
-                } else {
-                    (git::rev_parse(&cache_dir, r)?, true)
-                }
-            }
-        };
+        let default = git::detect_or_set_default_branch(&cache_dir, &skill.source.url)?;
+        let rev = format!("refs/remotes/origin/{default}");
+        let new_commit = git::rev_parse(&cache_dir, &rev)?;
 
-        if !(pinned && !args.include_pinned && args.r#ref.is_none()) && new_commit != skill.commit {
+        if new_commit != skill.commit {
             plan.push((skill.install_name.clone(), dest.clone(), new_commit));
         }
 
@@ -301,18 +282,7 @@ pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
         }
     }
     // Apply ref override even if commit unchanged
-    if let Some(r) = args.r#ref {
-        for t in &targets {
-            if let Some(entry) = lf
-                .skills
-                .iter_mut()
-                .find(|s| s.install_name == t.install_name)
-            {
-                entry.ref_ = Some(r.to_string());
-            }
-        }
-    }
-    if updates.is_empty() && args.r#ref.is_none() {
+    if updates.is_empty() {
         println!("Nothing to upgrade.");
         return Ok(());
     }

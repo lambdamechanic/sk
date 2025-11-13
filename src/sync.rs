@@ -27,7 +27,6 @@ struct SyncTarget {
     commit: String,
     skill_path: String,
     lock_index: Option<usize>,
-    lock_ref: Option<String>,
 }
 
 pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
@@ -298,7 +297,7 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
             repo: target.spec.repo.clone(),
             skill_path: target.skill_path.clone(),
         },
-        ref_: target.lock_ref.clone(),
+        legacy_ref: None,
         commit: head,
         digest,
         installed_at: Utc::now().to_rfc3339(),
@@ -359,7 +358,6 @@ fn build_existing_target(entry: lock::LockSkill, index: usize) -> Result<SyncTar
         commit: entry.commit.clone(),
         skill_path: entry.source.skill_path.clone(),
         lock_index: Some(index),
-        lock_ref: entry.ref_.clone(),
     })
 }
 
@@ -391,7 +389,6 @@ fn build_new_target(
         commit,
         skill_path,
         lock_index: None,
-        lock_ref: None,
     })
 }
 

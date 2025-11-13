@@ -17,8 +17,9 @@ pub struct LockSkill {
     #[serde(rename = "installName")]
     pub install_name: String,
     pub source: Source,
-    #[serde(rename = "ref")]
-    pub ref_: Option<String>,
+    #[allow(dead_code)]
+    #[serde(default, rename = "ref", skip_serializing)]
+    pub legacy_ref: Option<String>,
     pub commit: String,
     pub digest: String,
     #[serde(rename = "installedAt")]

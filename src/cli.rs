@@ -16,8 +16,6 @@ pub enum Commands {
     Install {
         repo: String,
         skill_name: String,
-        #[arg(long = "ref")]
-        r#ref: Option<String>,
         #[arg(long)]
         alias: Option<String>,
         #[arg(long)]
@@ -56,14 +54,10 @@ pub enum Commands {
     Upgrade {
         #[arg(allow_hyphen_values = true)]
         target: String, // installed-name or --all
-        #[arg(long = "ref")]
-        r#ref: Option<String>,
         #[arg(long)]
         root: Option<String>,
         #[arg(long)]
         dry_run: bool,
-        #[arg(long)]
-        include_pinned: bool,
     },
     Remove {
         installed_name: String,

@@ -20,13 +20,13 @@ Create a fast, deterministic CLI named `sk` to *install, check, upgrade, and man
 
 ```
 sk init [--root <dir>]
-sk install <repo> <skill-name> [--ref <branch|tag|sha>] [--alias <name>] [--path <subdir>] [--root <dir>] [--https]
+sk install <repo> <skill-name> [--alias <name>] [--path <subdir>] [--root <dir>] [--https]
 sk list [--root <dir>] [--json]
 sk where <installed-name> [--root <dir>]
 sk check [<installed-name> ...] [--root <dir>] [--json]
 sk status [<installed-name> ...] [--root <dir>] [--json]
 sk update                      # cache-only: fetch all known repos; no project writes
-sk upgrade <installed-name|--all> [--ref <...>] [--root <dir>] [--dry-run] [--include-pinned]
+sk upgrade <installed-name|--all> [--root <dir>] [--dry-run]
 sk remove <installed-name> [--root <dir>] [--force]
 sk sync-back <installed-name> [--branch <name>] [--message "<msg>"] [--root <dir>]
 sk config get|set <key> [value]  # per-user config (~/.config/sk/config.json)
@@ -79,7 +79,6 @@ sk config get|set <key> [value]  # per-user config (~/.config/sk/config.json)
         "repo": "skills",
         "skillPath": "document-skills/pdf"     // subdir containing SKILL.md
       },
-      "ref": "main",                           // optional user constraint; omit to track default branch
       "commit": "9f0e7c...abc",                // pinned commit actually installed
       "digest": "sha256:...",                  // tree digest of installed copy
       "installedAt": "ISO-8601"
@@ -88,13 +87,6 @@ sk config get|set <key> [value]  # per-user config (~/.config/sk/config.json)
   "generatedAt": "ISO-8601"
 }
 ```
-
-* **`ref` semantics**
-
-  * *branch name*: track that branch.
-  * *tag or exact SHA*: treated as **pinned** (skip in `update`-driven upgrades unless `--include-pinned`).
-  * *omitted*: track **remote default branch** (determined via cache).
-
 ---
 
 ## Command semantics
@@ -109,9 +101,8 @@ sk config get|set <key> [value]  # per-user config (~/.config/sk/config.json)
 ### `sk install <repo> <skill-name>`
 
 1. **Resolve repo URL** from shorthand or explicit URL; ensure cached clone at `~/.cache/sk/repos/...` (clone if missing; otherwise fetch).
-2. **Resolve ref**: if `--ref` empty, prepare to use remote default branch; else use the provided ref.
-3. **Discover skill**: search for subdirs with `SKILL.md`, parse YAML front‑matter; pick the one whose `name` == `<skill-name>` (or enforced via `--path`).
-4. **Checkout commit**: resolve `<ref>` to a commit in the cache (or `origin/HEAD`/default branch head).
+2. **Discover skill**: search for subdirs with `SKILL.md`, parse YAML front‑matter; pick the one whose `name` == `<skill-name>` (or enforced via `--path`).
+3. **Checkout commit**: resolve the remote default branch (`origin/HEAD`) to a commit in the cache.
 5. **Copy** subdir to `<root>/<installName>/` where `installName = --alias` or front‑matter `name`.
 6. **Compute digest** (SHA‑256 over sorted rel paths+bytes, ignoring `.git` & editor junk).
 7. **Write lock** entry with source, `ref`, `commit`, `digest`.
@@ -148,9 +139,7 @@ sk config get|set <key> [value]  # per-user config (~/.config/sk/config.json)
     > Local edits in `skills/<name>`. Refusing to upgrade. Fork the source and repoint, or use `sk sync-back <name>` if you have push access.
   * Determine target commit:
 
-    * If `ref` is a **branch** → use cache’s `origin/<branch>` tip.
-    * If `ref` is **omitted** → use cache’s **default branch** tip.
-    * If `ref` is **tag/SHA** → treat as pinned; skip unless `--include-pinned`.
+* Always use the cache’s **default branch** tip as the candidate commit.
   * If `--dry-run` → *print plan only* (`old → new`) and exit.
   * Otherwise copy the subdir from cache at the new commit into `<root>/<name>`, recompute digest, update the lockfile commit & digest.
 
@@ -202,7 +191,6 @@ struct Lockfile {
 struct LockSkill {
     installName: String,
     source: Source,
-    ref_: Option<String>,  // "main" | "v1.2.3" | "abc123" | None
     commit: String,        // pinned commit installed
     digest: String,        // "sha256:<hex>"
     installedAt: String,

@@ -33,16 +33,12 @@ fn main() -> Result<()> {
         Commands::Update => update::run_update(),
         Commands::Upgrade {
             target,
-            r#ref,
             root,
             dry_run,
-            include_pinned,
         } => upgrade::run_upgrade(upgrade::UpgradeArgs {
             target: &target,
-            r#ref: r#ref.as_deref(),
             root: root.as_deref(),
             dry_run,
-            include_pinned,
         }),
         Commands::Remove {
             installed_name,
@@ -76,7 +72,6 @@ fn main() -> Result<()> {
         Commands::Install {
             repo,
             skill_name,
-            r#ref,
             alias,
             path,
             root,
@@ -84,7 +79,6 @@ fn main() -> Result<()> {
         } => install::run_install(install::InstallArgs {
             repo: &repo,
             skill_name: &skill_name,
-            r#ref: r#ref.as_deref(),
             alias: alias.as_deref(),
             path: path.as_deref(),
             root: root.as_deref(),
@@ -310,28 +304,11 @@ fn cmd_status(names: &[String], root_flag: Option<&str>, json: bool) -> Result<(
         );
         let mut update_str = None;
         if cache_dir.exists() {
-            // Determine tracked tip commit
-            let new_tip = match &skill.ref_ {
-                Some(r) => {
-                    if let Ok(Some(_)) = git::remote_branch_tip(&cache_dir, r) {
-                        Some(git::rev_parse(
-                            &cache_dir,
-                            &format!("refs/remotes/origin/{r}"),
-                        )?)
-                    } else {
-                        None
-                    }
-                }
-                None => {
-                    let default =
-                        git::detect_or_set_default_branch(&cache_dir, &skill.source.url).ok();
-                    default
-                        .map(|b| git::rev_parse(&cache_dir, &format!("refs/remotes/origin/{b}")))
-                        .transpose()
-                        .ok()
-                        .flatten()
-                }
-            };
+            let new_tip = git::detect_or_set_default_branch(&cache_dir, &skill.source.url)
+                .ok()
+                .and_then(|branch| {
+                    git::rev_parse(&cache_dir, &format!("refs/remotes/origin/{branch}")).ok()
+                });
             if let Some(new_sha) = new_tip {
                 if new_sha != skill.commit {
                     update_str = Some(format!("{} -> {}", &skill.commit[..7], &new_sha[..7]));

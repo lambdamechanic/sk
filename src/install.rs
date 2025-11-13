@@ -8,7 +8,6 @@ use std::process::{Command, Stdio};
 pub struct InstallArgs<'a> {
     pub repo: &'a str,
     pub skill_name: &'a str,
-    pub r#ref: Option<&'a str>,
     pub alias: Option<&'a str>,
     pub path: Option<&'a str>,
     pub root: Option<&'a str>,
@@ -29,21 +28,10 @@ pub fn run_install(args: InstallArgs) -> Result<()> {
     git::ensure_cached_repo(&cache_dir, &spec)?;
     let default_branch = git::detect_or_set_default_branch(&cache_dir, &spec.url)?;
 
-    // Resolve commit
-    let commit = match args.r#ref {
-        Some(r) => {
-            // Try origin/<branch>, then tag or sha
-            let try1 = git::rev_parse(&cache_dir, &format!("origin/{r}"));
-            if let Ok(c1) = try1 {
-                c1
-            } else {
-                git::rev_parse(&cache_dir, r)?
-            }
-        }
-        None => {
-            let rev = format!("refs/remotes/origin/{default_branch}");
-            git::rev_parse(&cache_dir, &rev)?
-        }
+    // Resolve commit from the remote default branch
+    let commit = {
+        let rev = format!("refs/remotes/origin/{default_branch}");
+        git::rev_parse(&cache_dir, &rev)?
     };
 
     // Discover skills
@@ -116,7 +104,6 @@ pub fn run_install(args: InstallArgs) -> Result<()> {
         bail!("Lockfile already contains skill with installName '{install_name}'");
     }
 
-    let ref_field = args.r#ref.map(|s| s.to_string());
     let entry = lock::LockSkill {
         install_name: install_name.to_string(),
         source: lock::Source {
@@ -126,7 +113,7 @@ pub fn run_install(args: InstallArgs) -> Result<()> {
             repo: spec.repo.clone(),
             skill_path: chosen.skill_path.clone(),
         },
-        ref_: ref_field,
+        legacy_ref: None,
         commit: commit.clone(),
         digest: digest.clone(),
         installed_at: Utc::now().to_rfc3339(),
