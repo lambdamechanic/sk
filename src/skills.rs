@@ -54,7 +54,7 @@ pub fn list_skills_in_repo(cache_dir: &Path, commit: &str) -> Result<Vec<Discove
             continue;
         }
         let text = String::from_utf8_lossy(&content.stdout);
-        if let Some(meta) = parse_skill_frontmatter(&text) {
+        if let Ok(meta) = parse_skill_frontmatter_str(&text) {
             let skill_dir = if file_path == "SKILL.md" {
                 ".".to_string()
             } else {
@@ -69,15 +69,22 @@ pub fn list_skills_in_repo(cache_dir: &Path, commit: &str) -> Result<Vec<Discove
     Ok(skills)
 }
 
-fn parse_skill_frontmatter(text: &str) -> Option<SkillMeta> {
+pub fn parse_skill_frontmatter_str(text: &str) -> Result<SkillMeta> {
     // Expect leading --- YAML --- frontmatter; tolerate CRLF on Windows
-    let re = Regex::new(r"(?s)^---\r?\n(.*?)\r?\n---").ok()?;
-    let caps = re.captures(text)?;
-    let yaml = caps.get(1)?.as_str();
-    serde_yaml::from_str::<SkillMeta>(yaml).ok()
+    let regex = Regex::new(r"(?s)^---\r?\n(.*?)\r?\n---")?;
+    let captures = regex
+        .captures(text)
+        .context("missing YAML front-matter block")?;
+    let yaml = captures
+        .get(1)
+        .map(|m| m.as_str())
+        .context("empty YAML front-matter")?;
+    let meta = serde_yaml::from_str::<SkillMeta>(yaml)
+        .context("unable to parse SKILL front-matter as YAML")?;
+    Ok(meta)
 }
 
 pub fn parse_frontmatter_file(path: &Path) -> Result<SkillMeta> {
     let data = fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
-    parse_skill_frontmatter(&data).context("invalid or missing SKILL.md front-matter")
+    parse_skill_frontmatter_str(&data).context("invalid or missing SKILL.md front-matter")
 }
