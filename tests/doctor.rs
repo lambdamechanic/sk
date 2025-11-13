@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::tempdir;
 
+use sk::digest;
+
 fn git(args: &[&str], cwd: &Path) {
     let status = Command::new("git")
         .args(args)
@@ -176,4 +178,86 @@ fn doctor_drops_orphan_lock_entries_and_normalizes_lockfile() {
         lock.contains("\"skills\": []"),
         "lockfile should have no skills after dropping orphans"
     );
+}
+
+#[test]
+fn doctor_reports_missing_skill_md() {
+    let tmp = tempdir().unwrap();
+    let project = tmp.path().join("project");
+    fs::create_dir_all(&project).unwrap();
+    git(&["init", "-b", "main"], &project);
+
+    let install_dir = project.join("skills").join("demo");
+    fs::create_dir_all(&install_dir).unwrap();
+    fs::write(install_dir.join("README.md"), "demo").unwrap();
+    let digest = digest::digest_dir(&install_dir).unwrap();
+
+    write_lockfile(
+        &project,
+        &format!(
+            r#"    {{
+      "installName": "demo",
+      "source": {{
+        "url": "git@local:o/r4.git",
+        "host": "local",
+        "owner": "o",
+        "repo": "r4",
+        "skillPath": "skill-4"
+      }},
+      "ref": null,
+      "commit": "3333333",
+      "digest": "{digest}",
+      "installedAt": "2020-01-01T00:00:00Z"
+    }}"#
+        ),
+    );
+
+    let mut cmd = cargo_bin_cmd!("sk");
+    cmd.current_dir(&project)
+        .env("SK_CACHE_DIR", tmp.path().join("cache"))
+        .args(["doctor"]);
+    cmd.assert().success().stdout(contains("Missing SKILL.md"));
+}
+
+#[test]
+fn doctor_reports_invalid_skill_frontmatter() {
+    let tmp = tempdir().unwrap();
+    let project = tmp.path().join("project");
+    fs::create_dir_all(&project).unwrap();
+    git(&["init", "-b", "main"], &project);
+
+    let install_dir = project.join("skills").join("broken");
+    fs::create_dir_all(&install_dir).unwrap();
+    fs::write(
+        install_dir.join("SKILL.md"),
+        "---\nname: broken\n---\nbody\n",
+    )
+    .unwrap();
+    let digest = digest::digest_dir(&install_dir).unwrap();
+
+    write_lockfile(
+        &project,
+        &format!(
+            r#"    {{
+      "installName": "broken",
+      "source": {{
+        "url": "git@local:o/r5.git",
+        "host": "local",
+        "owner": "o",
+        "repo": "r5",
+        "skillPath": "skill-5"
+      }},
+      "ref": null,
+      "commit": "4444444",
+      "digest": "{digest}",
+      "installedAt": "2020-01-01T00:00:00Z"
+    }}"#
+        ),
+    );
+
+    let mut cmd = cargo_bin_cmd!("sk");
+    cmd.current_dir(&project)
+        .env("SK_CACHE_DIR", tmp.path().join("cache"))
+        .args(["doctor"]);
+    cmd.assert().success().stdout(contains("Invalid SKILL.md"));
 }

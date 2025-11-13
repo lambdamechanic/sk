@@ -1,9 +1,9 @@
-use crate::{config, digest, git, lock, paths};
+use crate::{config, digest, git, lock, paths, skills};
 use anyhow::{Context, Result};
 use chrono::Utc;
 use std::collections::HashSet;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub fn run_doctor(apply: bool) -> Result<()> {
     let project_root = git::ensure_git_repo()?;
@@ -81,6 +81,10 @@ pub fn run_doctor(apply: bool) -> Result<()> {
                 }
             }
         } else {
+            if let Err(msg) = validate_skill_manifest(&install_dir) {
+                had_issues = true;
+                println!("- {msg}");
+            }
             // digest
             let cur = digest::digest_dir(&install_dir).ok();
             match cur {
@@ -205,4 +209,24 @@ fn clean_if_empty(dir: PathBuf) -> Result<()> {
         fs::remove_dir_all(dir)?;
     }
     Ok(())
+}
+
+fn validate_skill_manifest(dir: &Path) -> Result<(), String> {
+    let skill_md = dir.join("SKILL.md");
+    if !skill_md.exists() {
+        return Err(format!("Missing SKILL.md at {}", skill_md.display()));
+    }
+    match skills::parse_frontmatter_file(&skill_md) {
+        Ok(meta) => {
+            if meta.name.trim().is_empty() || meta.description.trim().is_empty() {
+                Err(format!(
+                    "SKILL.md missing required name/description fields at {}",
+                    skill_md.display()
+                ))
+            } else {
+                Ok(())
+            }
+        }
+        Err(e) => Err(format!("Invalid SKILL.md at {} ({e})", skill_md.display())),
+    }
 }
