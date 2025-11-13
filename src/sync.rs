@@ -2,9 +2,14 @@ use crate::{config, git, lock, paths};
 use anyhow::{bail, Context, Result};
 use chrono::Utc;
 use std::fs;
-use std::path::PathBuf;
+#[cfg(unix)]
+use std::os::unix::fs::symlink;
+#[cfg(windows)]
+use std::os::windows::fs::{symlink_dir, symlink_file};
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::TempDir;
+use walkdir::WalkDir;
 
 pub struct SyncBackArgs<'a> {
     pub installed_name: &'a str,
@@ -136,17 +141,13 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
         // Ensure destination directory exists (no-op for root).
         fs::create_dir_all(&target_subdir)?;
 
-        run(
-            Command::new("bash").args([
-                "-lc",
-                &format!(
-                    "cp -a '{}'/. '{}'",
-                    dest_installed.display(),
-                    target_subdir.display()
-                ),
-            ]),
-            "copy contents",
-        )?;
+        mirror_dir(&dest_installed, &target_subdir).with_context(|| {
+            format!(
+                "copy {} -> {}",
+                dest_installed.display(),
+                target_subdir.display()
+            )
+        })?;
     }
 
     // Commit changes
@@ -308,6 +309,78 @@ fn purge_children_except_git(dir: &std::path::Path) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn mirror_dir(src: &Path, dest: &Path) -> Result<()> {
+    for entry in WalkDir::new(src).follow_links(false) {
+        let entry = entry?;
+        let rel = entry
+            .path()
+            .strip_prefix(src)
+            .unwrap_or_else(|_| entry.path());
+        if rel.as_os_str().is_empty() {
+            continue;
+        }
+        let target = dest.join(rel);
+        if entry.file_type().is_dir() {
+            fs::create_dir_all(&target)
+                .with_context(|| format!("create dir {}", target.display()))?;
+        } else if entry.file_type().is_symlink() {
+            copy_symlink(entry.path(), &target)?;
+        } else {
+            if let Some(parent) = target.parent() {
+                fs::create_dir_all(parent)
+                    .with_context(|| format!("create parent {}", parent.display()))?;
+            }
+            fs::copy(entry.path(), &target).with_context(|| {
+                format!("copy {} -> {}", entry.path().display(), target.display())
+            })?;
+        }
+    }
+    Ok(())
+}
+
+fn remove_existing(path: &Path) {
+    let _ = fs::remove_file(path);
+    let _ = fs::remove_dir_all(path);
+}
+
+#[cfg(unix)]
+fn copy_symlink(src: &Path, dest: &Path) -> Result<()> {
+    let target = fs::read_link(src).with_context(|| format!("read symlink {}", src.display()))?;
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("create parent {}", parent.display()))?;
+    }
+    remove_existing(dest);
+    symlink(target, dest).with_context(|| format!("create symlink {}", dest.display()))
+}
+
+#[cfg(windows)]
+fn copy_symlink(src: &Path, dest: &Path) -> Result<()> {
+    let target = fs::read_link(src).with_context(|| format!("read symlink {}", src.display()))?;
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("create parent {}", parent.display()))?;
+    }
+    remove_existing(dest);
+    let meta = fs::metadata(src);
+    match meta {
+        Ok(m) if m.is_dir() => symlink_dir(target, dest)
+            .with_context(|| format!("create dir symlink {}", dest.display())),
+        Ok(_) => symlink_file(target, dest)
+            .with_context(|| format!("create file symlink {}", dest.display())),
+        Err(_) => symlink_file(target, dest)
+            .with_context(|| format!("create file symlink {}", dest.display())),
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
+fn copy_symlink(src: &Path, _dest: &Path) -> Result<()> {
+    bail!(
+        "symlinks at {} are not supported on this platform",
+        src.display()
+    );
 }
 
 fn default_branch_name(name: &str) -> String {

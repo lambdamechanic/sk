@@ -24,6 +24,9 @@ impl Default for UserConfig {
 }
 
 pub fn config_dir() -> Result<PathBuf> {
+    if let Ok(dir) = std::env::var("SK_CONFIG_DIR") {
+        return Ok(PathBuf::from(dir));
+    }
     let pd = ProjectDirs::from("", "", "sk").context("unable to determine config dir")?;
     Ok(pd.config_dir().to_path_buf())
 }
