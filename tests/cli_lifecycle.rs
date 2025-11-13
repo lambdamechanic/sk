@@ -3,7 +3,7 @@ use std::fs;
 #[path = "support/mod.rs"]
 mod support;
 
-use support::{parse_status_entries, CliFixture, StatusEntry};
+use support::{normalize_newlines, parse_status_entries, CliFixture, StatusEntry};
 
 #[test]
 fn lifecycle_install_update_upgrade_and_remove_flow() {
@@ -42,7 +42,7 @@ fn lifecycle_install_update_upgrade_and_remove_flow() {
 
     let skill_dir = fx.skill_dir("sample");
     let contents = fs::read_to_string(skill_dir.join("file.txt")).unwrap();
-    assert_eq!(contents, "v2\n");
+    assert_eq!(normalize_newlines(&contents), "v2\n");
 
     let lock_after = fx.lock_json();
     let new_commit = lock_after["skills"][0]["commit"]

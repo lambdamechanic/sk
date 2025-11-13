@@ -4,7 +4,7 @@ use std::process::Command;
 #[path = "support/mod.rs"]
 mod support;
 
-use support::{git, CliFixture};
+use support::{git, normalize_newlines, CliFixture};
 
 #[test]
 fn sync_back_pushes_branch_with_local_edits() {
@@ -39,7 +39,7 @@ fn sync_back_pushes_branch_with_local_edits() {
     git(&["checkout", "sync/test"], &remote.work);
     let synced =
         fs::read_to_string(remote.work.join(remote.skill_path()).join("file.txt")).unwrap();
-    assert_eq!(synced, "local edit\n");
+    assert_eq!(normalize_newlines(&synced), "local edit\n");
 
     let log = Command::new("git")
         .args([

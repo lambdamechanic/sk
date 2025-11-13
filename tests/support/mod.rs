@@ -258,3 +258,7 @@ impl CliFixture {
 pub fn parse_status_entries(value: Json) -> Vec<StatusEntry> {
     serde_json::from_value(value).expect("status json shape")
 }
+
+pub fn normalize_newlines(input: &str) -> String {
+    input.replace("\r\n", "\n")
+}
