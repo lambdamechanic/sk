@@ -173,12 +173,13 @@ Pick #1 for simplicity, #2 if you want zero-macro builds and control over alloca
 - In async code, wrap shared deps in `Arc<dyn Trait + Send + Sync>` when needed.
 - Return owned data (`Vec<T>`) from trait methods to avoid lifetime tangles.
 - Keep domain logic as pure functions over data; invoke effects at the edges.
+- For CLI flows, lean on `tests/support/mod.rs` (`CliFixture`, `RemoteRepo`, and helpers that pre-wire `SK_CACHE_DIR`/`SK_CONFIG_DIR`) so every integration test spins up the same deterministic temp repos.
 
 ---
 
 ## Testing Standards
 
-- **Coverage target: 100%.** CI enforces `cargo llvm-cov --fail-under 100`. If you genuinely cannot cover a path (e.g., OS-specific panic, signal handler), call it out in the PR description and add a `#[cfg(test)]` or `#[cfg_attr(feature = "coverage", allow(unreachable_code))]` style guard so reviewers can see the reasoning. Exceptions require explicit approval.
+- **Coverage gate: 45% (cargo llvm-cov).** CI currently enforces `cargo llvm-cov --fail-under-lines 45`. Treat that as the floor, not the ceiling—once `main` sits comfortably above a higher percentage, ratchet the workflow file and avoid ever lowering the bar without a written justification.
 - **Business logic ⇒ property tests.** Use `proptest` for any non-trivial domain rule (scheduling, diffing, parsing, state machines, etc.). Unit tests that check a couple of examples aren’t enough; capture invariants as properties.
 - **Structure:** keep property tests in `tests` modules alongside unit tests, e.g.:
 

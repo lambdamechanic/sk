@@ -25,6 +25,36 @@ This mirrors the approach used in the adjacent `isura` repo, adapted for this wo
 - Repo skill discovery: see `tests/skills_list.rs` for creating a temporary git repo (with `git -C <dir> ...`) and asserting `skills::list_skills_in_repo` finds multiple skills.
 - Path utilities and cache override: see `tests/paths_cache.rs` for using `tempfile` and `SK_CACHE_DIR` to drive `paths::cache_root` deterministically, and for `resolve_project_path` absolute/relative behavior.
 
+## Integration Fixtures
+
+End-to-end CLI tests share a reusable harness under `tests/support/mod.rs`:
+
+- `CliFixture` bootstraps a temp git project, a cache override (`SK_CACHE_DIR`), and a throwaway config directory via the new `SK_CONFIG_DIR` override.
+- `RemoteRepo` wraps local bare remotes plus worktrees so tests can push upgrades (`overwrite_file`) without reimplementing git plumbing.
+- Helper utilities expose common assertions such as `parse_status_entries` for `sk status --json`.
+
+Example:
+
+```rust
+#[path = "support/mod.rs"]
+mod support;
+
+use support::{CliFixture, parse_status_entries};
+
+#[test]
+fn lifecycle_flow() {
+    let fx = CliFixture::new();
+    fx.sk_success(&["init"]);
+    let remote = fx.create_remote("repo", "skills/demo", "demo");
+    fx.install_from_remote(&remote, "demo");
+
+    let status = parse_status_entries(fx.run_json(&["status", "--json"]));
+    assert_eq!(status[0].state, "clean");
+}
+```
+
+This fixture keeps every test hermetic (no writes to the developer’s real `~/.config/sk` or cache) and exercises the exact CLI binaries that CI runs.
+
 ## Testing Guidelines
 
 - Unit tests close to the logic, minimal filesystem/network. Prefer capability traits + small fakes.
@@ -37,10 +67,12 @@ This mirrors the approach used in the adjacent `isura` repo, adapted for this wo
 
 - `cargo llvm-cov` requires the `llvm-tools-preview` component. The script installs it if missing.
 - If running on macOS, ensure Xcode/Command Line Tools include `llvm-profdata` and `llvm-cov`, or use the Rust component-provided tools.
+- `SK_CONFIG_DIR` mirrors `SK_CACHE_DIR`: point it at a temp directory to keep test config files away from your real workstation settings.
 
 ## Ratcheting Policy
 
 - When coverage rises and stabilizes on `main`, bump the CI threshold by 5% increments in `.github/workflows/ci.yml`.
 - Never reduce the threshold on `main` without a clear justification.
+- Every PR already runs the linux formatter/clippy gate plus macOS and Windows build+test jobs; match that matrix locally if you’re debugging platform-specific failures.
 
 See also: `skills/testing/SKILL.md` for broader testing patterns.
