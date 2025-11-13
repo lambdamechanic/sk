@@ -5,8 +5,17 @@ use std::process::Command;
 use tempfile::tempdir;
 
 fn git(args: &[&str], cwd: &Path) {
-    let status = Command::new("git").args(args).current_dir(cwd).status().unwrap();
-    assert!(status.success(), "git {:?} failed in {}", args, cwd.display());
+    let status = Command::new("git")
+        .args(args)
+        .current_dir(cwd)
+        .status()
+        .unwrap();
+    assert!(
+        status.success(),
+        "git {:?} failed in {}",
+        args,
+        cwd.display()
+    );
 }
 
 #[test]
@@ -81,7 +90,10 @@ fn install_requires_path_when_names_conflict() {
         .args(["install", &file_url, "dupe"]) // no --path
         .output()
         .unwrap();
-    assert!(!out.status.success(), "install unexpectedly succeeded: {out:?}");
+    assert!(
+        !out.status.success(),
+        "install unexpectedly succeeded: {out:?}"
+    );
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
         stderr.contains("Multiple skills named 'dupe'"),
@@ -102,7 +114,9 @@ fn install_requires_path_when_names_conflict() {
         .args(["install", &file_url, "dupe", "--path", "skills/b"])
         .output()
         .unwrap();
-    assert!(out2.status.success(), "install with --path failed: {out2:?}");
+    assert!(
+        out2.status.success(),
+        "install with --path failed: {out2:?}"
+    );
     assert!(project.join("skills/dupe/SKILL.md").exists());
 }
-

@@ -6,8 +6,17 @@ use std::process::Command;
 use tempfile::tempdir;
 
 fn git(args: &[&str], cwd: &Path) {
-    let status = Command::new("git").args(args).current_dir(cwd).status().unwrap();
-    assert!(status.success(), "git {:?} failed in {}", args, cwd.display());
+    let status = Command::new("git")
+        .args(args)
+        .current_dir(cwd)
+        .status()
+        .unwrap();
+    assert!(
+        status.success(),
+        "git {:?} failed in {}",
+        args,
+        cwd.display()
+    );
 }
 
 #[test]
@@ -77,4 +86,3 @@ fn check_reports_modified_after_local_edit() {
     let arr2: Json = serde_json::from_slice(&out2.stdout).unwrap();
     assert_eq!(arr2[0]["state"].as_str().unwrap(), "modified");
 }
-
