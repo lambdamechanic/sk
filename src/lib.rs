@@ -6,6 +6,7 @@ pub mod git;
 pub mod install;
 pub mod lock;
 pub mod paths;
+pub mod remove;
 pub mod skills;
 pub mod update;
 pub mod upgrade;
