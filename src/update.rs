@@ -36,8 +36,8 @@ pub fn run_update() -> Result<()> {
             repo: repo.clone(),
         };
         git::ensure_cached_repo(&cache_dir, &spec)?;
-        let _default = git::detect_or_set_default_branch(&cache_dir, &url)?;
-        println!("Updated cache for {owner}/{repo}, default branch ok");
+        let default_branch = git::refresh_default_branch(&cache_dir, &url)?;
+        println!("Updated cache for {owner}/{repo} (default branch {default_branch})");
     }
     Ok(())
 }

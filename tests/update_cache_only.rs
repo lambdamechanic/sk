@@ -1,5 +1,6 @@
 use assert_cmd::cargo::cargo_bin_cmd;
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -66,6 +67,71 @@ fn init_bare_and_work_with_v1(
     (bare, work, v1)
 }
 
+fn path_to_file_url(p: &Path) -> String {
+    #[cfg(windows)]
+    {
+        let s = p.to_string_lossy().replace('\\', "/");
+        if s.len() >= 2 && s.as_bytes()[1] == b':' {
+            return format!("file:///{s}");
+        }
+        if s.starts_with("//") {
+            return format!("file:{s}");
+        }
+        if s.starts_with('/') {
+            return format!("file://{s}");
+        }
+        format!("file:///{s}")
+    }
+    #[cfg(not(windows))]
+    {
+        format!("file://{}", p.to_string_lossy())
+    }
+}
+
+fn hashed_leaf(url: &str, repo: &str) -> String {
+    let h = Sha256::digest(url.as_bytes());
+    let hex = format!("{h:x}");
+    let short = &hex[..12];
+    format!("{repo}-{short}")
+}
+
+fn cache_repo_path(cache_root: &Path, owner: &str, repo: &str, url: &str) -> PathBuf {
+    cache_root
+        .join("repos/local")
+        .join(owner)
+        .join(hashed_leaf(url, repo))
+}
+
+fn run_update(project: &Path, cache_root: &Path) {
+    let mut cmd = cargo_bin_cmd!("sk");
+    let out = cmd
+        .current_dir(project)
+        .env("SK_CACHE_DIR", cache_root.to_str().unwrap())
+        .args(["update"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "sk update failed: {out:?}");
+}
+
+fn origin_head(cache_repo: &Path) -> String {
+    let out = Command::new("git")
+        .args([
+            "-C",
+            cache_repo.to_str().unwrap(),
+            "symbolic-ref",
+            "refs/remotes/origin/HEAD",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "git symbolic-ref failed: {:?}",
+        out.stderr
+    );
+    let s = String::from_utf8(out.stdout).unwrap();
+    s.trim().rsplit('/').next().unwrap().to_string()
+}
+
 #[test]
 fn update_is_cache_only_and_fetches() {
     let root = tempdir().unwrap();
@@ -81,18 +147,8 @@ fn update_is_cache_only_and_fetches() {
 
     // Pre-clone cache at v1 so it becomes stale after we push v2
     let cache_root = root.join("cache");
-    // Hash-only cache leaf for local file:// URLs: repo-<sha256(url)[:12]>
-    fn hashed_leaf(url: &str, repo: &str) -> String {
-        use sha2::{Digest, Sha256};
-        let h = Sha256::digest(url.as_bytes());
-        let hex = format!("{h:x}");
-        let short = &hex[..12];
-        format!("{repo}-{short}")
-    }
     let url1 = path_to_file_url(&bare);
-    let cache_repo = cache_root
-        .join("repos/local/o")
-        .join(hashed_leaf(&url1, "r1"));
+    let cache_repo = cache_repo_path(&cache_root, "o", "r1", &url1);
     fs::create_dir_all(cache_repo.parent().unwrap()).unwrap();
     git(
         &[
@@ -127,27 +183,6 @@ fn update_is_cache_only_and_fetches() {
     let v2 = v2.trim().to_string();
 
     // Build lockfile (value not used by update semantics)
-    fn path_to_file_url(p: &Path) -> String {
-        #[cfg(windows)]
-        {
-            let s = p.to_string_lossy().replace('\\', "/");
-            if s.len() >= 2 && s.as_bytes()[1] == b':' {
-                return format!("file:///{s}");
-            }
-            if s.starts_with("//") {
-                return format!("file:{s}");
-            }
-            if s.starts_with('/') {
-                return format!("file://{s}");
-            }
-            format!("file:///{s}")
-        }
-        #[cfg(not(windows))]
-        {
-            format!("file://{}", p.to_string_lossy())
-        }
-    }
-
     let lock = json!({
         "version": 1,
         "skills": [
@@ -173,14 +208,7 @@ fn update_is_cache_only_and_fetches() {
     let before = fs::read_to_string(&lock_path).unwrap();
 
     // Run update; it should only touch cache, not the project
-    let mut cmd = cargo_bin_cmd!("sk");
-    let out = cmd
-        .current_dir(&project)
-        .env("SK_CACHE_DIR", cache_root.to_str().unwrap())
-        .args(["update"])
-        .output()
-        .unwrap();
-    assert!(out.status.success(), "sk update failed: {out:?}");
+    run_update(&project, &cache_root);
 
     // Project lockfile unchanged
     let after = fs::read_to_string(&lock_path).unwrap();
@@ -202,4 +230,66 @@ fn update_is_cache_only_and_fetches() {
     .unwrap();
     let tip = tip.trim();
     assert_eq!(tip, v2, "cache should fetch latest origin/main");
+}
+
+#[test]
+fn update_refreshes_default_branch_head() {
+    let root = tempdir().unwrap();
+    let root = root.path();
+
+    let (bare, work, _v1) = init_bare_and_work_with_v1(root, "skill-head", "skill");
+
+    let project = root.join("project-head");
+    fs::create_dir_all(&project).unwrap();
+    git(&["init", "-b", "main"], &project);
+
+    let cache_root = root.join("cache-head");
+    let url = path_to_file_url(&bare);
+    let lock = json!({
+        "version": 1,
+        "skills": [
+            {
+                "installName": "shead",
+                "source": {
+                    "url": url,
+                    "host": "local",
+                    "owner": "o",
+                    "repo": "rhead",
+                    "skillPath": "skill"
+                },
+                "ref": null,
+                "commit": "deadbeef",
+                "digest": "sha256:1",
+                "installedAt": "1970-01-01T00:00:00Z"
+            }
+        ],
+        "generatedAt": "1970-01-01T00:00:00Z"
+    });
+    fs::write(
+        project.join("skills.lock.json"),
+        serde_json::to_string_pretty(&lock).unwrap(),
+    )
+    .unwrap();
+
+    run_update(&project, &cache_root);
+
+    let cache_repo = cache_repo_path(&cache_root, "o", "rhead", &url);
+    assert!(
+        cache_repo.exists(),
+        "cache repo missing at {}",
+        cache_repo.display()
+    );
+    assert_eq!(origin_head(&cache_repo), "main");
+
+    // Change remote default branch to trunk and push new commit
+    git(&["checkout", "-b", "trunk"], &work);
+    write(&work.join("skill").join("file.txt"), "trunk\n");
+    git(&["add", "."], &work);
+    git(&["commit", "-m", "trunk"], &work);
+    git(&["push", "origin", "trunk"], &work);
+    git(&["symbolic-ref", "HEAD", "refs/heads/trunk"], &bare);
+
+    run_update(&project, &cache_root);
+
+    assert_eq!(origin_head(&cache_repo), "trunk");
 }

@@ -119,26 +119,43 @@ pub fn ensure_cached_repo(cache_dir: &Path, spec: &RepoSpec) -> Result<()> {
     Ok(())
 }
 
-pub fn detect_or_set_default_branch(cache_dir: &Path, remote: &str) -> Result<String> {
-    // Try to read origin/HEAD
+fn read_origin_head(cache_dir: &Path) -> Result<Option<String>> {
+    let cache = cache_dir.to_string_lossy();
     let out = Command::new("git")
         .args([
             "-C",
-            &cache_dir.to_string_lossy(),
+            &cache,
             "symbolic-ref",
             "-q",
             "refs/remotes/origin/HEAD",
         ])
         .output()
         .context("git symbolic-ref failed")?;
-    if out.status.success() {
-        let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
-        // refs/remotes/origin/main -> main
-        if let Some(branch) = s.rsplit('/').next() {
-            return Ok(branch.to_string());
-        }
+    if !out.status.success() {
+        return Ok(None);
     }
-    // Fallback: query remote default and set it locally
+    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    let branch = s.rsplit('/').next().unwrap_or("").to_string();
+    if branch.is_empty() {
+        return Ok(None);
+    }
+    let verify = Command::new("git")
+        .args([
+            "-C",
+            &cache,
+            "show-ref",
+            "--verify",
+            &format!("refs/remotes/origin/{branch}"),
+        ])
+        .status()
+        .context("git show-ref failed")?;
+    if !verify.success() {
+        return Ok(None);
+    }
+    Ok(Some(branch))
+}
+
+fn query_remote_default_branch(remote: &str) -> Result<String> {
     let ls = Command::new("git")
         .args(["ls-remote", "--symref", remote, "HEAD"])
         .output()
@@ -147,28 +164,43 @@ pub fn detect_or_set_default_branch(cache_dir: &Path, remote: &str) -> Result<St
         bail!("git ls-remote failed for {remote}");
     }
     let txt = String::from_utf8_lossy(&ls.stdout);
-    // Expect a line like: ref: refs/heads/main	HEAD
-    let mut branch = None;
     for line in txt.lines() {
         if line.starts_with("ref: ") && line.ends_with("\tHEAD") {
             if let Some(name) = line.split_whitespace().nth(1) {
-                branch = name.rsplit('/').next().map(|s| s.to_string());
+                if let Some(branch) = name.rsplit('/').next() {
+                    if !branch.is_empty() {
+                        return Ok(branch.to_string());
+                    }
+                }
             }
         }
     }
-    let branch = branch.context("unable to determine default branch from ls-remote")?;
-    // Set origin/HEAD accordingly
-    let _ = Command::new("git")
-        .args([
-            "-C",
-            &cache_dir.to_string_lossy(),
-            "remote",
-            "set-head",
-            "origin",
-            &branch,
-        ])
-        .status();
+    bail!("unable to determine default branch from ls-remote output for {remote}");
+}
+
+fn set_origin_head(cache_dir: &Path, branch: &str) -> Result<()> {
+    let cache = cache_dir.to_string_lossy();
+    let status = Command::new("git")
+        .args(["-C", &cache, "remote", "set-head", "origin", branch])
+        .status()
+        .context("git remote set-head failed")?;
+    if !status.success() {
+        bail!("git remote set-head origin {branch} failed");
+    }
+    Ok(())
+}
+
+pub fn refresh_default_branch(cache_dir: &Path, remote: &str) -> Result<String> {
+    let branch = query_remote_default_branch(remote)?;
+    set_origin_head(cache_dir, &branch)?;
     Ok(branch)
+}
+
+pub fn detect_or_set_default_branch(cache_dir: &Path, remote: &str) -> Result<String> {
+    if let Some(branch) = read_origin_head(cache_dir)? {
+        return Ok(branch);
+    }
+    refresh_default_branch(cache_dir, remote)
 }
 
 pub fn rev_parse(cache_dir: &Path, rev: &str) -> Result<String> {
