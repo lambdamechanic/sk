@@ -2,19 +2,117 @@
   "version": 1,
   "skills": [
     {
+      "installName": "bd",
+      "source": {
+        "url": "https://github.com/lambdamechanic/skills",
+        "host": "github.com",
+        "owner": "lambdamechanic",
+        "repo": "skills",
+        "skillPath": "bd"
+      },
+      "ref": null,
+      "commit": "6826f63cacbb54f2ec60bf276dd6a4c95859b238",
+      "digest": "sha256:18fe02eb49142040890a5805da56382d9ec1db2ba61a9b72d4457de16dcf8665",
+      "installedAt": "2025-11-13T08:21:23.642702565+00:00"
+    },
+    {
+      "installName": "dumbwaiter-mcp",
+      "source": {
+        "url": "https://github.com/lambdamechanic/skills",
+        "host": "github.com",
+        "owner": "lambdamechanic",
+        "repo": "skills",
+        "skillPath": "dumbwaiter-mcp"
+      },
+      "ref": null,
+      "commit": "6826f63cacbb54f2ec60bf276dd6a4c95859b238",
+      "digest": "sha256:79fa22ac2f18513f75a9e2e2fdb1eaf7c1349f286302e9fcd0b08a0396f4a628",
+      "installedAt": "2025-11-13T08:21:28.835816025+00:00"
+    },
+    {
+      "installName": "landing-the-plane",
+      "source": {
+        "url": "https://github.com/lambdamechanic/skills",
+        "host": "github.com",
+        "owner": "lambdamechanic",
+        "repo": "skills",
+        "skillPath": "landing-the-plane"
+      },
+      "ref": null,
+      "commit": "6826f63cacbb54f2ec60bf276dd6a4c95859b238",
+      "digest": "sha256:c1acb40904886a9e4823dff004a1b51c5c28a7369f374868479e41941f800e29",
+      "installedAt": "2025-11-13T08:21:33.284066694+00:00"
+    },
+    {
+      "installName": "rust-guidelines",
+      "source": {
+        "url": "https://github.com/lambdamechanic/skills",
+        "host": "github.com",
+        "owner": "lambdamechanic",
+        "repo": "skills",
+        "skillPath": "rust-guidelines"
+      },
+      "ref": null,
+      "commit": "6826f63cacbb54f2ec60bf276dd6a4c95859b238",
+      "digest": "sha256:63c89e30e6f8e508c2c1d864b257b35551860324f406286db928b354f948462a",
+      "installedAt": "2025-11-13T08:21:42.307852428+00:00"
+    },
+    {
+      "installName": "starting-the-task",
+      "source": {
+        "url": "https://github.com/lambdamechanic/skills",
+        "host": "github.com",
+        "owner": "lambdamechanic",
+        "repo": "skills",
+        "skillPath": "starting-the-task"
+      },
+      "ref": null,
+      "commit": "6826f63cacbb54f2ec60bf276dd6a4c95859b238",
+      "digest": "sha256:5a577bfaddde0d038ef980dfc8fbbb6f314a985412f17672649b8c820c9ee5e3",
+      "installedAt": "2025-11-13T08:25:57.182411153+00:00"
+    },
+    {
+      "installName": "testing",
+      "source": {
+        "url": "https://github.com/lambdamechanic/skills",
+        "host": "github.com",
+        "owner": "lambdamechanic",
+        "repo": "skills",
+        "skillPath": "testing"
+      },
+      "ref": null,
+      "commit": "6826f63cacbb54f2ec60bf276dd6a4c95859b238",
+      "digest": "sha256:b334a4e306f04260631d860163b33ec8c374123b20d73ca66baf9f884f0da099",
+      "installedAt": "2025-11-13T08:26:02.183004771+00:00"
+    },
+    {
       "installName": "template-skill",
       "source": {
-        "url": "git@github.com:anthropics/skills.git",
+        "url": "https://github.com/lambdamechanic/skills",
         "host": "github.com",
-        "owner": "anthropics",
+        "owner": "lambdamechanic",
         "repo": "skills",
         "skillPath": "template-skill"
       },
       "ref": null,
-      "commit": "c74d647e56e6daa12029b6acb11a821348ad044b",
+      "commit": "6826f63cacbb54f2ec60bf276dd6a4c95859b238",
       "digest": "sha256:38c88f722b574a922311d334a70c2008a2a5b896f06eaa75516d716e5725b26f",
-      "installedAt": "2025-11-11T09:32:28.497265313+00:00"
+      "installedAt": "2025-11-13T08:26:07.614013594+00:00"
+    },
+    {
+      "installName": "sk",
+      "source": {
+        "url": "https://github.com/lambdamechanic/skills",
+        "host": "github.com",
+        "owner": "lambdamechanic",
+        "repo": "skills",
+        "skillPath": "sk"
+      },
+      "ref": null,
+      "commit": "f833121bcdc6c6b998d03e599d2aaaec4014d7b6",
+      "digest": "sha256:f28c7d018d49d2c563d0da26936602fbaf9b546d2b5615df4617c54d3dafc360",
+      "installedAt": "2025-11-13T08:48:35.815659752+00:00"
     }
   ],
-  "generatedAt": "2025-11-11T09:32:28.497280331+00:00"
+  "generatedAt": "2025-11-13T08:48:35.815667688+00:00"
 }

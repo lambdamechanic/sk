@@ -1,5 +1,5 @@
-use crate::{config, git, lock, paths};
-use anyhow::{bail, Context, Result};
+use crate::{config, digest, git, lock, paths};
+use anyhow::{anyhow, bail, Context, Result};
 use chrono::Utc;
 use std::fs;
 #[cfg(unix)]
@@ -16,6 +16,18 @@ pub struct SyncBackArgs<'a> {
     pub branch: Option<&'a str>,
     pub message: Option<&'a str>,
     pub root: Option<&'a str>,
+    pub repo: Option<&'a str>,
+    pub skill_path: Option<&'a str>,
+    pub https: bool,
+}
+
+struct SyncTarget {
+    spec: git::RepoSpec,
+    cache_dir: PathBuf,
+    commit: String,
+    skill_path: String,
+    lock_index: Option<usize>,
+    lock_ref: Option<String>,
 }
 
 pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
@@ -32,43 +44,31 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
         );
     }
 
-    // Load lockfile and find matching entry
     let lock_path = project_root.join("skills.lock.json");
-    if !lock_path.exists() {
-        bail!("no lockfile found");
-    }
-    let data = fs::read(&lock_path).with_context(|| format!("reading {}", lock_path.display()))?;
-    let lf: lock::Lockfile = serde_json::from_slice(&data).context("parse lockfile")?;
-    let skill = lf
+    let mut lockfile = if lock_path.exists() {
+        let data =
+            fs::read(&lock_path).with_context(|| format!("reading {}", lock_path.display()))?;
+        serde_json::from_slice::<lock::Lockfile>(&data).context("parse lockfile")?
+    } else {
+        lock::Lockfile::empty_now()
+    };
+
+    let existing_idx = lockfile
         .skills
         .iter()
-        .find(|s| s.install_name == args.installed_name)
-        .cloned()
-        .ok_or_else(|| anyhow::anyhow!("skill not found: {}", args.installed_name))?;
-
-    // Ensure cached repo exists and up-to-date enough for branching
-    let cache_dir = paths::resolve_or_primary_cache_path(
-        &skill.source.url,
-        &skill.source.host,
-        &skill.source.owner,
-        &skill.source.repo,
-    );
-    let spec = git::RepoSpec {
-        url: skill.source.url.clone(),
-        host: skill.source.host.clone(),
-        owner: skill.source.owner.clone(),
-        repo: skill.source.repo.clone(),
+        .position(|s| s.install_name == args.installed_name);
+    let target = if let Some(idx) = existing_idx {
+        let entry = lockfile.skills[idx].clone();
+        build_existing_target(entry, idx)?
+    } else {
+        build_new_target(
+            args.repo,
+            args.skill_path,
+            args.installed_name,
+            args.https,
+            &cfg,
+        )?
     };
-    git::ensure_cached_repo(&cache_dir, &spec)?;
-    // Verify the locked commit exists in cache
-    if !git::has_object(&cache_dir, &skill.commit)? {
-        bail!(
-            "locked commit {} missing in cache for {}/{}. Run 'sk update' or 'sk doctor --apply' first.",
-            &skill.commit[..7],
-            &skill.source.owner,
-            &skill.source.repo
-        );
-    }
 
     // Determine branch name
     let branch_name = match args.branch {
@@ -83,21 +83,21 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
     run(
         Command::new("git").args([
             "-C",
-            &cache_dir.to_string_lossy(),
+            &target.cache_dir.to_string_lossy(),
             "worktree",
             "add",
             "-b",
             &branch_name,
             wt_path.to_string_lossy().as_ref(),
-            &skill.commit,
+            &target.commit,
         ]),
         "git worktree add",
     )?;
     // Guard: ensure we always remove the worktree even on early errors
-    let mut wt_guard = WorktreeGuard::new(cache_dir.clone(), wt_path.clone());
+    let mut wt_guard = WorktreeGuard::new(target.cache_dir.clone(), wt_path.clone());
 
     // Rsync or copy installed dir into worktree skillPath
-    let target_subdir = wt_path.join(&skill.source.skill_path);
+    let target_subdir = wt_path.join(&target.skill_path);
     if let Some(parent) = target_subdir.parent() {
         fs::create_dir_all(parent).ok();
     }
@@ -125,8 +125,7 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
         // Special-case root-level skills (skill_path == ".") to avoid deleting the
         // worktree itself or attempting to remove '.'. Instead, purge only the
         // children of the worktree root while preserving VCS metadata like '.git'.
-        let is_root =
-            skill.source.skill_path.trim().is_empty() || skill.source.skill_path.trim() == ".";
+        let is_root = target.skill_path.trim().is_empty() || target.skill_path.trim() == ".";
 
         if target_subdir.exists() {
             if is_root {
@@ -189,7 +188,7 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
             let rm_status = Command::new("git")
                 .args([
                     "-C",
-                    &cache_dir.to_string_lossy(),
+                    &target.cache_dir.to_string_lossy(),
                     "worktree",
                     "remove",
                     "--force",
@@ -215,7 +214,7 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
                 let del = Command::new("git")
                     .args([
                         "-C",
-                        &cache_dir.to_string_lossy(),
+                        &target.cache_dir.to_string_lossy(),
                         "branch",
                         "-D",
                         &branch_name,
@@ -250,8 +249,8 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
         .output()
         .context("spawn git push failed")?;
     if push_out.status.success() {
-        let owner = &skill.source.owner;
-        let repo = &skill.source.repo;
+        let owner = &target.spec.owner;
+        let repo = &target.spec.repo;
         println!("Pushed branch '{branch_name}' to origin for {owner}/{repo}.");
         println!("PR hint: gh pr create --fill --head {branch_name}");
     } else {
@@ -264,11 +263,13 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
         );
     }
 
+    let head = git::rev_parse(&wt_path, "HEAD")?;
+
     // Success: attempt to remove worktree now; only disarm guard on success
     let rm_status = Command::new("git")
         .args([
             "-C",
-            &cache_dir.to_string_lossy(),
+            &target.cache_dir.to_string_lossy(),
             "worktree",
             "remove",
             "--force",
@@ -286,6 +287,29 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
     } else {
         eprintln!("Warning: failed to spawn 'git worktree remove'. Guard will retry on drop.");
     }
+
+    let digest = digest::digest_dir(&dest_installed)?;
+    let entry = lock::LockSkill {
+        install_name: args.installed_name.to_string(),
+        source: lock::Source {
+            url: target.spec.url.clone(),
+            host: target.spec.host.clone(),
+            owner: target.spec.owner.clone(),
+            repo: target.spec.repo.clone(),
+            skill_path: target.skill_path.clone(),
+        },
+        ref_: target.lock_ref.clone(),
+        commit: head,
+        digest,
+        installed_at: Utc::now().to_rfc3339(),
+    };
+    if let Some(idx) = target.lock_index {
+        lockfile.skills[idx] = entry;
+    } else {
+        lockfile.skills.push(entry);
+    }
+    lockfile.generated_at = Utc::now().to_rfc3339();
+    lock::save_lockfile(&lock_path, &lockfile)?;
 
     Ok(())
 }
@@ -309,6 +333,79 @@ fn purge_children_except_git(dir: &std::path::Path) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn build_existing_target(entry: lock::LockSkill, index: usize) -> Result<SyncTarget> {
+    let spec = git::RepoSpec {
+        url: entry.source.url.clone(),
+        host: entry.source.host.clone(),
+        owner: entry.source.owner.clone(),
+        repo: entry.source.repo.clone(),
+    };
+    let cache_dir =
+        paths::resolve_or_primary_cache_path(&spec.url, &spec.host, &spec.owner, &spec.repo);
+    git::ensure_cached_repo(&cache_dir, &spec)?;
+    if !git::has_object(&cache_dir, &entry.commit)? {
+        bail!(
+            "locked commit {} missing in cache for {}/{}. Run 'sk update' or 'sk doctor --apply' first.",
+            &entry.commit[..7],
+            &entry.source.owner,
+            &entry.source.repo
+        );
+    }
+    Ok(SyncTarget {
+        spec,
+        cache_dir,
+        commit: entry.commit.clone(),
+        skill_path: entry.source.skill_path.clone(),
+        lock_index: Some(index),
+        lock_ref: entry.ref_.clone(),
+    })
+}
+
+fn build_new_target(
+    repo_flag: Option<&str>,
+    skill_path_flag: Option<&str>,
+    installed_name: &str,
+    https: bool,
+    cfg: &config::UserConfig,
+) -> Result<SyncTarget> {
+    let repo_input = repo_flag.ok_or_else(|| {
+        anyhow!(
+            "skill '{}' not found in skills.lock.json. Provide --repo to publish a new skill.",
+            installed_name
+        )
+    })?;
+    let spec = git::parse_repo_input(repo_input, https, &cfg.default_host)?;
+    let cache_dir =
+        paths::resolve_or_primary_cache_path(&spec.url, &spec.host, &spec.owner, &spec.repo);
+    git::ensure_cached_repo(&cache_dir, &spec)?;
+    let default_branch = git::detect_or_set_default_branch(&cache_dir, &spec.url)?;
+    let commit = git::rev_parse(&cache_dir, &format!("refs/remotes/origin/{default_branch}"))?;
+    let skill_path = skill_path_flag
+        .map(normalize_skill_path)
+        .unwrap_or_else(|| normalize_skill_path(installed_name));
+    Ok(SyncTarget {
+        spec,
+        cache_dir,
+        commit,
+        skill_path,
+        lock_index: None,
+        lock_ref: None,
+    })
+}
+
+fn normalize_skill_path(input: &str) -> String {
+    let mut trimmed = input.trim();
+    while let Some(rest) = trimmed.strip_prefix("./") {
+        trimmed = rest;
+    }
+    trimmed = trimmed.trim_matches('/');
+    if trimmed.is_empty() || trimmed == "." {
+        ".".to_string()
+    } else {
+        trimmed.to_string()
+    }
 }
 
 fn mirror_dir(src: &Path, dest: &Path) -> Result<()> {

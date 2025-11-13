@@ -80,6 +80,21 @@ pub enum Commands {
         message: Option<String>,
         #[arg(long)]
         root: Option<String>,
+        #[arg(
+            long,
+            help = "Target repo for new skills (URL, file://, or @owner/repo)"
+        )]
+        repo: Option<String>,
+        #[arg(
+            long = "skill-path",
+            help = "Subdirectory inside the repo; defaults to installed name"
+        )]
+        skill_path: Option<String>,
+        #[arg(
+            long,
+            help = "Use HTTPS when resolving @owner/repo shorthand (default SSH)"
+        )]
+        https: bool,
     },
     #[command(
         about = "Analyze and repair cache and lockfile",
