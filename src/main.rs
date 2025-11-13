@@ -7,6 +7,7 @@ mod install;
 mod lock;
 mod paths;
 mod precommit;
+mod remove;
 mod skills;
 mod sync;
 mod update;
@@ -47,10 +48,11 @@ fn main() -> Result<()> {
             installed_name,
             root,
             force,
-        } => {
-            let _ = (installed_name, force);
-            cmd_unimplemented("remove", false, root.as_deref())
-        }
+        } => remove::run_remove(remove::RemoveArgs {
+            installed_name: &installed_name,
+            root: root.as_deref(),
+            force,
+        }),
         Commands::SyncBack {
             installed_name,
             branch,
@@ -143,10 +145,6 @@ fn cmd_config(cmd: ConfigCmd) -> Result<()> {
         }
     }
     Ok(())
-}
-
-fn cmd_unimplemented(name: &str, _json: bool, _root: Option<&str>) -> Result<()> {
-    anyhow::bail!("'sk {name}' not implemented yet in scaffolding phase")
 }
 
 fn cmd_list(_root_flag: Option<&str>, json: bool) -> Result<()> {
