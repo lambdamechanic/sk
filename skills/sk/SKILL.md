@@ -36,9 +36,26 @@ description: "How to use the repo-scoped sk CLI to manage Claude Skills in this 
    ```bash
    target/debug/sk sync-back <name> \
      --repo https://github.com/lambdamechanic/skills \
-     --skill-path <subdir> --message "Add <name> skill"
+     --skill-path <subdir> \
+     --message "Add <name> skill"
    ```
-   Provide the repo (`--repo`) and destination subdirectory (`--skill-path`). `sk` will clone the repo, branch from the default tip, add your local folder, push, and update `skills.lock.json` with the new SHA/digest so status checks stay clean.
+   Provide the repo (`--repo`) and destination subdirectory (`--skill-path`). `sk` clones that repo, branches from the default tip (or your custom `--branch`), copies your local folder, pushes, and rewrites `skills.lock.json` with the exact commit SHA/digest so status checks stay clean. You will always see the temporary branch name in the CLI output, e.g. `Pushed branch 'sk/sync/<name>/<timestamp>' …`, even though that branch is meant to be merged and deleted once the upstream PR lands.
+
+### Example: publishing `sk`
+
+```bash
+cd /path/to/sk-decisions
+target/debug/sk sync-back sk \
+  --repo https://github.com/lambdamechanic/skills \
+  --skill-path sk \
+  --branch sk/add-sk-skill-doc \
+  --message "Add sk skill doc"
+```
+
+What happens:
+- `sk` prints both the temporary branch name and the upstream repo it pushed to, so you can follow up on GitHub immediately.
+- The branch only needs to live long enough for you (or automation) to open a PR; the lockfile entry pins the pushed commit hash, so it’s safe to delete the branch once merged.
+- `skills.lock.json` gains a new entry for `sk` with the push timestamp, digest, and commit ID; subsequent `sk status` runs stay green because the on-disk tree matches that digest.
 
 ## Guardrails
 - Always run `bd update` / `bd close` so `.beads/issues.jsonl` matches any skill changes.
