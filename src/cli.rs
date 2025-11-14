@@ -114,6 +114,10 @@ pub enum Commands {
         #[command(subcommand)]
         cmd: TemplateCmd,
     },
+    Repo {
+        #[command(subcommand)]
+        cmd: RepoCmd,
+    },
     #[command(about = "Pre-commit checks (warn on local sources)")]
     Precommit {
         #[arg(long, help = "Allow local file:// sources without failing")]
@@ -134,5 +138,40 @@ pub enum TemplateCmd {
         description: String,
         #[arg(long)]
         root: Option<String>,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum RepoCmd {
+    #[command(about = "Cache a remote repo without installing a skill")]
+    Add {
+        repo: String,
+        #[arg(long)]
+        alias: Option<String>,
+        #[arg(long, help = "Use HTTPS when resolving @owner/repo shorthand")]
+        https: bool,
+    },
+    #[command(about = "List cached repos")]
+    List {
+        #[arg(long)]
+        json: bool,
+    },
+    #[command(about = "Show skills available within a repo")]
+    Catalog {
+        target: String,
+        #[arg(long, help = "Use HTTPS when resolving @owner/repo shorthand")]
+        https: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    #[command(about = "Search cached repos for matching skills")]
+    Search {
+        query: String,
+        #[arg(long, help = "Limit search to a specific alias or repo input")]
+        repo: Option<String>,
+        #[arg(long, help = "Use HTTPS when resolving @owner/repo shorthand")]
+        https: bool,
+        #[arg(long)]
+        json: bool,
     },
 }

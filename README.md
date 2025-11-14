@@ -32,6 +32,17 @@ sk install @anthropics/skills artifacts-builder
 sk list
 ```
 
+### 2½. Cache a repo and browse before installing
+Use `sk repo add` to clone the catalog into the local cache without copying a skill yet. Then list what’s inside and cherry-pick installs:
+```bash
+sk repo add @anthropics/skills --alias anthropic-catalog
+sk repo list
+sk repo catalog anthropic-catalog           # human-friendly table
+sk repo search "retro"                      # search across every cached repo
+sk repo catalog @anthropics/skills --json   # machine-readable listing
+```
+`sk repo add` writes to `skills.repos.json` in your project so teammates share the same catalogs.
+
 ### 3. Create your own upstream repo with `gh`
 Use the GitHub CLI (already required for `sk sync-back`) to host skills you author:
 ```bash
@@ -130,6 +141,7 @@ cargo clippy --all-targets --all-features
 ## Key concepts & layout
 - `skills/` — default install root (override via `sk init --root` or `sk config set default_root`).
 - `skills.lock.json` — versioned lockfile tracking each installed skill (`installName`, repo URL, commit, digest, install timestamp).
+- `skills.repos.json` — optional catalog registry populated by `sk repo add` so teammates know which repos you’ve cached.
 - Cache clones live under `~/.cache/sk/repos/<host>/<owner>/<repo>` (override with `SK_CACHE_DIR`).
 - User config lives in `~/.config/sk/config.json` (override with `SK_CONFIG_DIR`). Keys: `default_root`, `default_repo`, `template_source`, `protocol` (`ssh` or `https`), `default_host`, `github_user`.
 - Every skill subdirectory must contain `SKILL.md` with YAML front-matter that declares `name` and `description`.
@@ -141,6 +153,11 @@ cargo clippy --all-targets --all-features
 | `sk install <repo> <skill-name> [--path subdir] [--alias name]` | Copy a skill from a git repo into `skills/<alias>` and lock its commit/digest. |
 | `sk list` / `sk where <name>` | Inspect installed skill set or find the on-disk path. |
 | `sk check [name...] [--json]` | Quick OK/modified/missing status for installs. |
+| `sk status [name...] [--json]` | Compare digests plus show upstream tip (`old -> new`). |
+| `sk repo add <repo> [--alias foo]` | Cache a remote repo (and record it in `skills.repos.json`) without installing a skill yet. |
+| `sk repo list [--json]` | Show cached repos + their aliases. |
+| `sk repo catalog <alias-or-repo> [--json]` | List every skill exposed by a cached repo before installing. |
+| `sk repo search <query> [--repo alias] [--json]` | Search all cached repos (or a single repo via `--repo`) for matching skills. |
 | `sk update` | Refresh cached repos (safe to run on CI). |
 | `sk upgrade [--all|<name>] [--dry-run]` | Copy newer commits into the repo and update the lockfile. |
 | `sk template create <name> "<description>"` | Scaffold a new skill from the configured template into `skills/<name>`. |
