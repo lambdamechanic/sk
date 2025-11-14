@@ -162,9 +162,9 @@ fn cmd_list(_root_flag: Option<&str>, json: bool) -> Result<()> {
             println!(
                 "{}\t{}@{}\t{}",
                 s.install_name,
-                s.source.repo,
+                s.source.repo_name(),
                 &s.commit[..7],
-                s.source.skill_path
+                s.source.skill_path()
             );
         }
     }
@@ -293,15 +293,13 @@ fn cmd_status(names: &[String], root_flag: Option<&str>, json: bool) -> Result<(
             }
         };
         // Out-of-date check based on cache
-        let cache_dir = paths::resolve_or_primary_cache_path(
-            &skill.source.url,
-            &skill.source.host,
-            &skill.source.owner,
-            &skill.source.repo,
-        );
+        let spec = skill.source.repo_spec();
+        let cache_dir =
+            paths::resolve_or_primary_cache_path(&spec.url, &spec.host, &spec.owner, &spec.repo);
         let mut update_str = None;
         if cache_dir.exists() {
-            let new_tip = git::detect_or_set_default_branch(&cache_dir, &skill.source.url)
+            let spec = skill.source.repo_spec_owned();
+            let new_tip = git::detect_or_set_default_branch(&cache_dir, &spec)
                 .ok()
                 .and_then(|branch| {
                     git::rev_parse(&cache_dir, &format!("refs/remotes/origin/{branch}")).ok()

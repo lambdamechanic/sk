@@ -26,7 +26,7 @@ pub fn run_install(args: InstallArgs) -> Result<()> {
     let cache_dir =
         paths::resolve_or_primary_cache_path(&spec.url, &spec.host, &spec.owner, &spec.repo);
     git::ensure_cached_repo(&cache_dir, &spec)?;
-    let default_branch = git::detect_or_set_default_branch(&cache_dir, &spec.url)?;
+    let default_branch = git::detect_or_set_default_branch(&cache_dir, &spec)?;
 
     // Resolve commit from the remote default branch
     let commit = {
@@ -102,10 +102,7 @@ pub fn run_install(args: InstallArgs) -> Result<()> {
     let entry = lock::LockSkill {
         install_name: install_name.to_string(),
         source: lock::Source {
-            url: spec.url.clone(),
-            host: spec.host.clone(),
-            owner: spec.owner.clone(),
-            repo: spec.repo.clone(),
+            spec,
             skill_path: chosen.skill_path.clone(),
         },
         legacy_ref: None,

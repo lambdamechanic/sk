@@ -54,22 +54,13 @@ pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
             None => true,
         };
 
-        let cache_dir = paths::resolve_or_primary_cache_path(
-            &skill.source.url,
-            &skill.source.host,
-            &skill.source.owner,
-            &skill.source.repo,
-        );
+        let spec = skill.source.repo_spec_owned();
+        let cache_dir =
+            paths::resolve_or_primary_cache_path(&spec.url, &spec.host, &spec.owner, &spec.repo);
         // Always refresh cache to see latest remote state
-        let spec = git::RepoSpec {
-            url: skill.source.url.clone(),
-            host: skill.source.host.clone(),
-            owner: skill.source.owner.clone(),
-            repo: skill.source.repo.clone(),
-        };
         git::ensure_cached_repo(&cache_dir, &spec)?;
 
-        let default = git::detect_or_set_default_branch(&cache_dir, &skill.source.url)?;
+        let default = git::detect_or_set_default_branch(&cache_dir, &spec)?;
         let rev = format!("refs/remotes/origin/{default}");
         let new_commit = git::rev_parse(&cache_dir, &rev)?;
 
@@ -116,18 +107,15 @@ pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
     let mut staged: Vec<(String, std::path::PathBuf, String, String)> = vec![]; // (name, staged_path, new_commit, new_digest)
     for (name, dest, new_commit) in &plan {
         let s = targets.iter().find(|t| t.install_name == *name).unwrap();
-        let cache_dir = paths::resolve_or_primary_cache_path(
-            &s.source.url,
-            &s.source.host,
-            &s.source.owner,
-            &s.source.repo,
-        );
+        let spec = s.source.repo_spec();
+        let cache_dir =
+            paths::resolve_or_primary_cache_path(&spec.url, &spec.host, &spec.owner, &spec.repo);
         let staged_path = staging.path().join(name);
         fs::create_dir_all(&staged_path)?;
         install::extract_subdir_from_commit(
             &cache_dir,
             new_commit,
-            &s.source.skill_path,
+            s.source.skill_path(),
             &staged_path,
         )?;
         let new_digest = digest::digest_dir(&staged_path)?;

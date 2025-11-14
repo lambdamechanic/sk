@@ -28,12 +28,28 @@ pub struct LockSkill {
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Source {
-    pub url: String,
-    pub host: String,
-    pub owner: String,
-    pub repo: String,
+    #[serde(flatten)]
+    pub spec: crate::git::RepoSpec,
     #[serde(rename = "skillPath")]
     pub skill_path: String,
+}
+
+impl Source {
+    pub fn repo_spec(&self) -> &crate::git::RepoSpec {
+        &self.spec
+    }
+
+    pub fn repo_spec_owned(&self) -> crate::git::RepoSpec {
+        self.spec.clone()
+    }
+
+    pub fn repo_name(&self) -> &str {
+        &self.spec.repo
+    }
+
+    pub fn skill_path(&self) -> &str {
+        &self.skill_path
+    }
 }
 
 impl Lockfile {
