@@ -110,6 +110,10 @@ pub enum Commands {
         #[command(subcommand)]
         cmd: ConfigCmd,
     },
+    Template {
+        #[command(subcommand)]
+        cmd: TemplateCmd,
+    },
     #[command(about = "Pre-commit checks (warn on local sources)")]
     Precommit {
         #[arg(long, help = "Allow local file:// sources without failing")]
@@ -121,4 +125,14 @@ pub enum Commands {
 pub enum ConfigCmd {
     Get { key: String },
     Set { key: String, value: String },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum TemplateCmd {
+    Create {
+        name: String,
+        description: String,
+        #[arg(long)]
+        root: Option<String>,
+    },
 }

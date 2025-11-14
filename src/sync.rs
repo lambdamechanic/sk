@@ -357,13 +357,21 @@ fn build_new_target(
     https: bool,
     cfg: &config::UserConfig,
 ) -> Result<SyncTarget> {
-    let repo_input = repo_flag.ok_or_else(|| {
-        anyhow!(
-            "skill '{}' not found in skills.lock.json. Provide --repo to publish a new skill.",
-            installed_name
-        )
-    })?;
-    let spec = git::parse_repo_input(repo_input, https, &cfg.default_host)?;
+    let repo_value = match repo_flag {
+        Some(val) => val.to_string(),
+        None => {
+            let trimmed = cfg.default_repo.trim();
+            if trimmed.is_empty() {
+                return Err(anyhow!(
+                    "skill '{}' not found in skills.lock.json. Provide --repo or set default_repo via 'sk config set default_repo <repo>'.",
+                    installed_name
+                ));
+            }
+            trimmed.to_string()
+        }
+    };
+    let prefer_https = https || cfg.protocol.eq_ignore_ascii_case("https");
+    let spec = git::parse_repo_input(&repo_value, prefer_https, &cfg.default_host)?;
     let cache_dir =
         paths::resolve_or_primary_cache_path(&spec.url, &spec.host, &spec.owner, &spec.repo);
     git::ensure_cached_repo(&cache_dir, &spec)?;

@@ -10,13 +10,14 @@ mod precommit;
 mod remove;
 mod skills;
 mod sync;
+mod template;
 mod update;
 mod upgrade;
 
 use anyhow::{Context, Result};
 use clap::Parser;
 
-use crate::cli::{Cli, Commands, ConfigCmd};
+use crate::cli::{Cli, Commands, ConfigCmd, TemplateCmd};
 use serde::Serialize;
 
 fn main() -> Result<()> {
@@ -68,6 +69,7 @@ fn main() -> Result<()> {
         }),
         Commands::Doctor { apply } => doctor::run_doctor(apply),
         Commands::Config { cmd } => cmd_config(cmd),
+        Commands::Template { cmd } => cmd_template(cmd),
         Commands::Precommit { allow_local } => precommit::run_precommit(allow_local),
         Commands::Install {
             repo,
@@ -83,6 +85,20 @@ fn main() -> Result<()> {
             path: path.as_deref(),
             root: root.as_deref(),
             https,
+        }),
+    }
+}
+
+fn cmd_template(cmd: TemplateCmd) -> Result<()> {
+    match cmd {
+        TemplateCmd::Create {
+            name,
+            description,
+            root,
+        } => template::run_template_create(template::TemplateCreateArgs {
+            name: &name,
+            description: &description,
+            root: root.as_deref(),
         }),
     }
 }
@@ -128,6 +144,8 @@ fn cmd_config(cmd: ConfigCmd) -> Result<()> {
                 "protocol" => println!("{}", cfg.protocol),
                 "default_host" => println!("{}", cfg.default_host),
                 "github_user" => println!("{}", cfg.github_user),
+                "default_repo" => println!("{}", cfg.default_repo),
+                "template_source" => println!("{}", cfg.template_source),
                 _ => anyhow::bail!("Unknown key: {key}"),
             }
         }
@@ -138,6 +156,8 @@ fn cmd_config(cmd: ConfigCmd) -> Result<()> {
                 "protocol" => cfg.protocol = value,
                 "default_host" => cfg.default_host = value,
                 "github_user" => cfg.github_user = value,
+                "default_repo" => cfg.default_repo = value,
+                "template_source" => cfg.template_source = value,
                 _ => anyhow::bail!("Unknown key: {key}"),
             }
             config::save(&cfg)?;
