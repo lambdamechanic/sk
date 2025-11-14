@@ -57,36 +57,7 @@ pub fn run_install(args: InstallArgs) -> Result<()> {
     }
 
     // Extract subdir from commit to dest via git archive | tar
-    fs::create_dir_all(&dest)?;
-    let strip_components = chosen.skill_path.split('/').count();
-    let mut archive = Command::new("git")
-        .args([
-            "-C",
-            &cache_dir.to_string_lossy(),
-            "archive",
-            "--format=tar",
-            &commit,
-            &chosen.skill_path,
-        ])
-        .stdout(Stdio::piped())
-        .spawn()
-        .context("spawn git archive failed")?;
-    let mut tar = Command::new("tar")
-        .args([
-            "-x",
-            "--strip-components",
-            &strip_components.to_string(),
-            "-C",
-            &dest.to_string_lossy(),
-        ])
-        .stdin(archive.stdout.take().unwrap())
-        .spawn()
-        .context("spawn tar failed")?;
-    let st1 = archive.wait()?;
-    let st2 = tar.wait()?;
-    if !st1.success() || !st2.success() {
-        bail!("failed to extract skill contents");
-    }
+    extract_subdir_from_commit(&cache_dir, &commit, &chosen.skill_path, &dest)?;
 
     // Compute digest
     let digest = digest::digest_dir(&dest)?;
@@ -260,6 +231,8 @@ pub fn extract_subdir_from_commit(
         .args([
             "-C",
             &cache_dir.to_string_lossy(),
+            "-c",
+            "core.autocrlf=false",
             "archive",
             "--format=tar",
             commit,

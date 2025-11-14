@@ -147,6 +147,8 @@ fn extract_skill_subdir(
         .args([
             "-C",
             &cache_dir.to_string_lossy(),
+            "-c",
+            "core.autocrlf=false",
             "archive",
             "--format=tar",
             commit,
