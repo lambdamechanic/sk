@@ -72,3 +72,38 @@ fn repo_search_accepts_repo_flag() {
     ]);
     assert_eq!(hits[0]["name"], "gamma-skill");
 }
+
+#[test]
+fn repo_list_marks_dirty_when_remote_unreachable() {
+    let fx = CliFixture::new();
+    fx.sk_success(&["init"]);
+    let remote = fx.create_remote("offline-repo", ".", "offline-skill");
+
+    fx.sk_success(&["repo", "add", &remote.file_url(), "--alias", "offline"]);
+    let first = fx.sk_cmd().args(["repo", "list"]).output().unwrap();
+    assert!(first.status.success(), "initial repo list failed");
+    let first_out = String::from_utf8_lossy(&first.stdout);
+    assert!(
+        !first_out.contains('*'),
+        "fresh listing should not mark dirty"
+    );
+
+    std::fs::remove_dir_all(&remote.bare).unwrap();
+
+    let offline = fx.sk_cmd().args(["repo", "list"]).output().unwrap();
+    assert!(
+        offline.status.success(),
+        "repo list should not fail when fetch errors"
+    );
+    let offline_out = String::from_utf8_lossy(&offline.stdout);
+    assert!(
+        offline_out
+            .lines()
+            .any(|line| line.contains("offline") && line.contains('*')),
+        "expected dirty flag next to offline repo counts\n{offline_out}"
+    );
+    assert!(
+        offline_out.contains("stale cache"),
+        "expected stale cache legend in output\n{offline_out}"
+    );
+}

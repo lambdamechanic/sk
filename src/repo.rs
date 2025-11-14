@@ -86,15 +86,32 @@ pub fn run_repo_list(args: RepoListArgs) -> Result<()> {
         "{:<12} {:<40} {:>6} {:>10}",
         "ALIAS", "REPO", "SKILLS", "INSTALLED"
     );
+    let mut had_dirty = false;
     for entry in &registry.repos {
         let spec = &entry.spec;
         let repo_label = format!("{}/{}/{}", spec.host, spec.owner, spec.repo);
-        let available = load_skills_for_spec(spec)?.len();
+        let counts = match load_available_skills_with_cache(spec) {
+            Ok(counts) => counts,
+            Err(err) => {
+                eprintln!(
+                    "warning: skipping repo {} ({repo_label}): {err}",
+                    entry.alias
+                );
+                continue;
+            }
+        };
+        if counts.dirty {
+            had_dirty = true;
+        }
         let installed = installed_counts.get(&repo_key(spec)).copied().unwrap_or(0);
+        let dirty_flag = if counts.dirty { "*" } else { "" };
         println!(
-            "{:<12} {:<40} {:>6} {:>10}",
-            entry.alias, repo_label, available, installed
+            "{:<12} {:<40} {:>6}{} {:>10}",
+            entry.alias, repo_label, counts.available, dirty_flag, installed
         );
+    }
+    if had_dirty {
+        println!("* stale cache: failed to refresh remote; showing last-known counts");
     }
     Ok(())
 }
@@ -295,6 +312,37 @@ fn load_skills_for_spec(spec: &git::RepoSpec) -> Result<Vec<skills::DiscoveredSk
     let default_branch = git::detect_or_set_default_branch(&cache_dir, spec)?;
     let commit = git::rev_parse(&cache_dir, &format!("refs/remotes/origin/{default_branch}"))?;
     skills::list_skills_in_repo(&cache_dir, &commit)
+}
+
+struct RepoListCounts {
+    available: usize,
+    dirty: bool,
+}
+
+fn load_available_skills_with_cache(spec: &git::RepoSpec) -> Result<RepoListCounts> {
+    let cache_dir =
+        paths::resolve_or_primary_cache_path(&spec.url, &spec.host, &spec.owner, &spec.repo);
+    let repo_label = format!("{}/{}/{}", spec.host, spec.owner, spec.repo);
+    let mut dirty = false;
+    match git::ensure_cached_repo(&cache_dir, spec) {
+        Ok(_) => {}
+        Err(err) => {
+            if cache_dir.join(".git").exists() {
+                dirty = true;
+                eprintln!("warning: unable to refresh {repo_label}; using cached counts ({err})");
+            } else {
+                return Err(err.context(format!("failed to cache repo {repo_label}")));
+            }
+        }
+    }
+    let default_branch = git::detect_or_set_default_branch(&cache_dir, spec)
+        .with_context(|| format!("determining default branch for {repo_label}"))?;
+    let commit = git::rev_parse(&cache_dir, &format!("refs/remotes/origin/{default_branch}"))
+        .with_context(|| format!("reading cached commit for {repo_label}"))?;
+    let available = skills::list_skills_in_repo(&cache_dir, &commit)
+        .with_context(|| format!("listing skills for {repo_label}"))?
+        .len();
+    Ok(RepoListCounts { available, dirty })
 }
 
 fn repo_key(spec: &git::RepoSpec) -> String {
