@@ -129,15 +129,21 @@ pub fn cache_repo_path(
     cache_root.join("repos").join(host).join(owner).join(leaf)
 }
 
-pub fn clone_into_cache(
-    cache_root: &Path,
-    host: &str,
-    owner: &str,
-    repo: &str,
-    bare_remote: &Path,
-    url_for_lock: &str,
-) -> PathBuf {
-    let dest = cache_repo_path(cache_root, host, owner, repo, url_for_lock);
+pub struct CacheRepoSpec<'a> {
+    pub host: &'a str,
+    pub owner: &'a str,
+    pub name: &'a str,
+    pub url_for_lock: &'a str,
+}
+
+pub fn clone_into_cache(cache_root: &Path, spec: CacheRepoSpec<'_>, bare_remote: &Path) -> PathBuf {
+    let dest = cache_repo_path(
+        cache_root,
+        spec.host,
+        spec.owner,
+        spec.name,
+        spec.url_for_lock,
+    );
     fs::create_dir_all(dest.parent().unwrap()).unwrap();
     git(
         &[

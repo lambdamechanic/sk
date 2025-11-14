@@ -1,43 +1,11 @@
 use assert_cmd::cargo::cargo_bin_cmd;
 use std::fs;
-use std::path::Path;
-use std::process::Command;
 use tempfile::tempdir;
 
-fn git(args: &[&str], cwd: &Path) {
-    let status = Command::new("git")
-        .args(args)
-        .current_dir(cwd)
-        .status()
-        .unwrap();
-    assert!(
-        status.success(),
-        "git {:?} failed in {}",
-        args,
-        cwd.display()
-    );
-}
+#[path = "support/mod.rs"]
+mod support;
 
-fn path_to_file_url(p: &Path) -> String {
-    #[cfg(windows)]
-    {
-        let s = p.to_string_lossy().replace('\\', "/");
-        if s.len() >= 2 && s.as_bytes()[1] == b':' {
-            return format!("file:///{s}");
-        }
-        if s.starts_with("//") {
-            return format!("file:{s}");
-        }
-        if s.starts_with('/') {
-            return format!("file://{s}");
-        }
-        format!("file:///{s}")
-    }
-    #[cfg(not(windows))]
-    {
-        format!("file://{}", p.to_string_lossy())
-    }
-}
+use support::{git, path_to_file_url};
 
 #[test]
 fn install_requires_path_when_names_conflict() {

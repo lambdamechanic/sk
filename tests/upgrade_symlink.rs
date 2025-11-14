@@ -10,7 +10,7 @@ use tempfile::tempdir;
 #[path = "support/mod.rs"]
 mod support;
 
-use support::{clone_into_cache, extract_subdir_from_commit, git, path_to_file_url};
+use support::{clone_into_cache, extract_subdir_from_commit, git, path_to_file_url, CacheRepoSpec};
 
 #[test]
 fn upgrade_preserves_symlinks() {
@@ -67,7 +67,16 @@ fn upgrade_preserves_symlinks() {
     git(&["push", "origin", "main"], &work);
 
     let file_url = path_to_file_url(&bare);
-    let cache = clone_into_cache(&cache_root, "local", "o", "r0", &bare, &file_url);
+    let cache = clone_into_cache(
+        &cache_root,
+        CacheRepoSpec {
+            host: "local",
+            owner: "o",
+            name: "r0",
+            url_for_lock: &file_url,
+        },
+        &bare,
+    );
 
     // Install v1 via cached archive
     let dest = project.join("skills/s0");

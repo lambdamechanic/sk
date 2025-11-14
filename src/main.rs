@@ -15,11 +15,12 @@ mod template;
 mod update;
 mod upgrade;
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use clap::Parser;
 
 use crate::cli::{Cli, Commands, ConfigCmd, RepoCmd, TemplateCmd};
 use serde::Serialize;
+use std::collections::HashSet;
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -231,59 +232,18 @@ struct CheckEntry {
 }
 
 fn cmd_check(names: &[String], root_flag: Option<&str>, json: bool) -> Result<()> {
-    let project_root = git::ensure_git_repo()?;
-    let cfg = config::load_or_default()?;
-    let install_root =
-        paths::resolve_project_path(&project_root, root_flag.unwrap_or(&cfg.default_root));
-    let lock_path = project_root.join("skills.lock.json");
-    if !lock_path.exists() {
-        anyhow::bail!("no lockfile");
-    }
-    let lf = lock::Lockfile::load(&lock_path)?;
-    let target_names: Vec<String> = if names.is_empty() {
-        lf.skills.iter().map(|s| s.install_name.clone()).collect()
-    } else {
-        names.to_vec()
-    };
-
-    let mut out: Vec<CheckEntry> = vec![];
-    for skill in lf
-        .skills
-        .iter()
-        .filter(|s| target_names.contains(&s.install_name))
-    {
-        let dest = install_root.join(&skill.install_name);
-        let state = if !dest.exists() {
-            "missing".to_string()
-        } else {
-            // Validate SKILL.md front-matter
-            let skill_md = dest.join("SKILL.md");
-            let valid = if skill_md.exists() {
-                crate::skills::parse_frontmatter_file(&skill_md).is_ok()
-            } else {
-                false
-            };
-            // Digest comparison
-            let digest_ok = crate::digest::digest_dir(&dest)
-                .map(|h| h == skill.digest)
-                .unwrap_or(false);
-            if valid && digest_ok {
-                "ok".to_string()
-            } else {
-                "modified".to_string()
-            }
-        };
-        out.push(CheckEntry {
-            install_name: skill.install_name.clone(),
-            state,
-        });
-    }
+    let ctx = load_project_context(root_flag)?;
+    let targets = select_skills(&ctx.lockfile.skills, names);
+    let entries: Vec<CheckEntry> = targets
+        .into_iter()
+        .map(|skill| build_check_entry(&ctx.install_root, skill))
+        .collect();
 
     if json {
-        println!("{}", serde_json::to_string_pretty(&out)?);
+        println!("{}", serde_json::to_string_pretty(&entries)?);
     } else {
-        for e in out {
-            println!("{}\t{}", e.install_name, e.state);
+        for entry in entries {
+            println!("{}\t{}", entry.install_name, entry.state);
         }
     }
     Ok(())
@@ -313,72 +273,120 @@ struct StatusEntry {
 }
 
 fn cmd_status(names: &[String], root_flag: Option<&str>, json: bool) -> Result<()> {
-    let project_root = git::ensure_git_repo()?;
-    let cfg = config::load_or_default()?;
-    let install_root =
-        paths::resolve_project_path(&project_root, root_flag.unwrap_or(&cfg.default_root));
-    let lock_path = project_root.join("skills.lock.json");
-    if !lock_path.exists() {
-        anyhow::bail!("no lockfile");
-    }
-    let lf = lock::Lockfile::load(&lock_path)?;
-    let target_names: Vec<String> = if names.is_empty() {
-        lf.skills.iter().map(|s| s.install_name.clone()).collect()
-    } else {
-        names.to_vec()
-    };
-    let mut out_entries: Vec<StatusEntry> = vec![];
-
-    for skill in lf
-        .skills
-        .iter()
-        .filter(|s| target_names.contains(&s.install_name))
-    {
-        let dest = install_root.join(&skill.install_name);
-        let (state, current_digest) = if !dest.exists() {
-            ("missing".to_string(), None)
-        } else {
-            let d = crate::digest::digest_dir(&dest).ok();
-            match d {
-                Some(hash) if hash == skill.digest => ("clean".to_string(), Some(hash)),
-                Some(hash) => ("modified".to_string(), Some(hash)),
-                None => ("modified".to_string(), None),
-            }
-        };
-        // Out-of-date check based on cache
-        let spec = skill.source.repo_spec();
-        let cache_dir =
-            paths::resolve_or_primary_cache_path(&spec.url, &spec.host, &spec.owner, &spec.repo);
-        let mut update_str = None;
-        if cache_dir.exists() {
-            let spec = skill.source.repo_spec_owned();
-            let new_tip = git::detect_or_set_default_branch(&cache_dir, &spec)
-                .ok()
-                .and_then(|branch| {
-                    git::rev_parse(&cache_dir, &format!("refs/remotes/origin/{branch}")).ok()
-                });
-            if let Some(new_sha) = new_tip {
-                if new_sha != skill.commit {
-                    update_str = Some(format!("{} -> {}", &skill.commit[..7], &new_sha[..7]));
-                }
-            }
-        }
-        out_entries.push(StatusEntry {
-            install_name: skill.install_name.clone(),
-            state,
-            locked: Some(skill.digest.clone()),
-            current: current_digest,
-            update: update_str,
-        });
-    }
+    let ctx = load_project_context(root_flag)?;
+    let targets = select_skills(&ctx.lockfile.skills, names);
+    let entries: Vec<StatusEntry> = targets
+        .into_iter()
+        .map(|skill| build_status_entry(&ctx.install_root, skill))
+        .collect();
 
     if json {
-        println!("{}", serde_json::to_string_pretty(&out_entries)?);
+        println!("{}", serde_json::to_string_pretty(&entries)?);
     } else {
-        for e in out_entries {
-            let upd = e.update.unwrap_or_else(|| "".to_string());
-            println!("{}\t{}\t{}", e.install_name, e.state, upd);
+        for entry in entries {
+            println!(
+                "{}\t{}\t{}",
+                entry.install_name,
+                entry.state,
+                entry.update.unwrap_or_default()
+            );
         }
     }
     Ok(())
+}
+
+struct ProjectContext {
+    install_root: std::path::PathBuf,
+    lockfile: lock::Lockfile,
+}
+
+fn load_project_context(root_flag: Option<&str>) -> Result<ProjectContext> {
+    let project_root = git::ensure_git_repo()?;
+    let cfg = config::load_or_default()?;
+    let install_root_rel = root_flag.unwrap_or(&cfg.default_root);
+    let install_root = paths::resolve_project_path(&project_root, install_root_rel);
+    let lock_path = project_root.join("skills.lock.json");
+    if !lock_path.exists() {
+        bail!("no lockfile");
+    }
+    let lockfile = lock::Lockfile::load(&lock_path)?;
+    Ok(ProjectContext {
+        install_root,
+        lockfile,
+    })
+}
+
+fn select_skills<'a>(skills: &'a [lock::LockSkill], names: &[String]) -> Vec<&'a lock::LockSkill> {
+    if names.is_empty() {
+        return skills.iter().collect();
+    }
+    let wanted: HashSet<&String> = names.iter().collect();
+    skills
+        .iter()
+        .filter(|skill| wanted.contains(&skill.install_name))
+        .collect()
+}
+
+fn build_check_entry(install_root: &std::path::Path, skill: &lock::LockSkill) -> CheckEntry {
+    let dest = install_root.join(&skill.install_name);
+    let state = if !dest.exists() {
+        "missing".to_string()
+    } else {
+        let skill_md = dest.join("SKILL.md");
+        let manifest_ok =
+            skill_md.exists() && crate::skills::parse_frontmatter_file(&skill_md).is_ok();
+        let digest_ok = crate::digest::digest_dir(&dest)
+            .map(|h| h == skill.digest)
+            .unwrap_or(false);
+        if manifest_ok && digest_ok {
+            "ok".to_string()
+        } else {
+            "modified".to_string()
+        }
+    };
+    CheckEntry {
+        install_name: skill.install_name.clone(),
+        state,
+    }
+}
+
+fn build_status_entry(install_root: &std::path::Path, skill: &lock::LockSkill) -> StatusEntry {
+    let dest = install_root.join(&skill.install_name);
+    let (state, current_digest) = compute_install_state(&dest, &skill.digest);
+    let update = compute_remote_update(skill);
+    StatusEntry {
+        install_name: skill.install_name.clone(),
+        state,
+        locked: Some(skill.digest.clone()),
+        current: current_digest,
+        update,
+    }
+}
+
+fn compute_install_state(dir: &std::path::Path, expected_digest: &str) -> (String, Option<String>) {
+    if !dir.exists() {
+        return ("missing".to_string(), None);
+    }
+    match crate::digest::digest_dir(dir).ok() {
+        Some(hash) if hash == expected_digest => ("clean".to_string(), Some(hash)),
+        Some(hash) => ("modified".to_string(), Some(hash)),
+        None => ("modified".to_string(), None),
+    }
+}
+
+fn compute_remote_update(skill: &lock::LockSkill) -> Option<String> {
+    let spec = skill.source.repo_spec();
+    let cache_dir =
+        paths::resolve_or_primary_cache_path(&spec.url, &spec.host, &spec.owner, &spec.repo);
+    if !cache_dir.exists() {
+        return None;
+    }
+    let owned = skill.source.repo_spec_owned();
+    let branch = git::detect_or_set_default_branch(&cache_dir, &owned).ok()?;
+    let tip = git::rev_parse(&cache_dir, &format!("refs/remotes/origin/{branch}")).ok()?;
+    if tip == skill.commit {
+        None
+    } else {
+        Some(format!("{} -> {}", &skill.commit[..7], &tip[..7]))
+    }
 }

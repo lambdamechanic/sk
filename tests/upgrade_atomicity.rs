@@ -9,7 +9,7 @@ use tempfile::TempDir;
 #[path = "support/mod.rs"]
 mod support;
 
-use support::{clone_into_cache, extract_subdir_from_commit, git, path_to_file_url};
+use support::{clone_into_cache, extract_subdir_from_commit, git, path_to_file_url, CacheRepoSpec};
 
 fn write(path: &Path, contents: &str) {
     if let Some(p) = path.parent() {
@@ -105,7 +105,16 @@ proptest! {
             let skill_path = format!("skill-{i}");
             let (bare, v1, v2) = init_skill_repo(&remotes_root, &repo, &skill_path);
             let file_url = path_to_file_url(&bare);
-            let cache = clone_into_cache(&cache_root, host, owner, &repo, &bare, &file_url);
+            let cache = clone_into_cache(
+                &cache_root,
+                CacheRepoSpec {
+                    host,
+                    owner,
+                    name: &repo,
+                    url_for_lock: &file_url,
+                },
+                &bare,
+            );
 
             // Install v1 into project
             let installed_name = format!("s{i}");

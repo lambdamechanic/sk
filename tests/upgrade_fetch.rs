@@ -9,7 +9,7 @@ use tempfile::tempdir;
 #[path = "support/mod.rs"]
 mod support;
 
-use support::{clone_into_cache, extract_subdir_from_commit, git, path_to_file_url};
+use support::{clone_into_cache, extract_subdir_from_commit, git, path_to_file_url, CacheRepoSpec};
 
 fn write(path: &Path, contents: &str) {
     if let Some(p) = path.parent() {
@@ -94,7 +94,16 @@ fn upgrade_fetches_cache_and_applies_without_update() {
     let skill_path = "skill-0";
     let (bare, v1, v2) = init_skill_repo(&remotes_root, repo, skill_path);
     let file_url = path_to_file_url(&bare);
-    let cache = clone_into_cache(&cache_root, host, owner, repo, &bare, &file_url);
+    let cache = clone_into_cache(
+        &cache_root,
+        CacheRepoSpec {
+            host,
+            owner,
+            name: repo,
+            url_for_lock: &file_url,
+        },
+        &bare,
+    );
 
     // Install v1
     let dest = project.join("skills").join("s0");
@@ -178,7 +187,16 @@ fn upgrade_handles_cross_device_rename_simulation() {
             format!("file://{}", bare.to_string_lossy())
         }
     };
-    let cache = clone_into_cache(&cache_root, host, owner, repo, &bare, &file_url);
+    let cache = clone_into_cache(
+        &cache_root,
+        CacheRepoSpec {
+            host,
+            owner,
+            name: repo,
+            url_for_lock: &file_url,
+        },
+        &bare,
+    );
 
     // Install v1
     let dest = project.join("skills").join("s0");
@@ -232,7 +250,16 @@ fn upgrade_does_not_mutate_on_extract_failure() {
     // r0 has stable skill path
     let (bare0, v1_0, _v2_0) = init_skill_repo(&remotes_root, "r0", "skill-0");
     let file_url0 = path_to_file_url(&bare0);
-    let cache0 = clone_into_cache(&cache_root, host, owner, "r0", &bare0, &file_url0);
+    let cache0 = clone_into_cache(
+        &cache_root,
+        CacheRepoSpec {
+            host,
+            owner,
+            name: "r0",
+            url_for_lock: &file_url0,
+        },
+        &bare0,
+    );
     // r1 removes the skill path in v2 to trigger extract failure
     let bare1 = remotes_root.join("removes").join("r1.git");
     fs::create_dir_all(&bare1).unwrap();
@@ -260,7 +287,16 @@ fn upgrade_does_not_mutate_on_extract_failure() {
     git(&["commit", "-m", "remove skill"], &work1);
     git(&["push", "origin", "main"], &work1);
     let file_url1 = path_to_file_url(&bare1);
-    let cache1 = clone_into_cache(&cache_root, host, owner, "r1", &bare1, &file_url1);
+    let cache1 = clone_into_cache(
+        &cache_root,
+        CacheRepoSpec {
+            host,
+            owner,
+            name: "r1",
+            url_for_lock: &file_url1,
+        },
+        &bare1,
+    );
     let v1_1 = String::from_utf8(
         Command::new("git")
             .args(["rev-parse", "HEAD~1"]) // the v1 commit
