@@ -51,6 +51,7 @@ pub fn run_doctor(apply: bool) -> Result<()> {
     for s in &lf.skills {
         let mut skill_messages: Vec<String> = Vec::new();
         let install_dir = install_root.join(&s.install_name);
+        let mut local_modified = false;
         if !install_dir.exists() {
             had_issues = true;
             skill_messages.push(format!(
@@ -94,10 +95,12 @@ pub fn run_doctor(apply: bool) -> Result<()> {
                 Some(_) => {
                     had_issues = true;
                     skill_messages.push("- Digest mismatch (modified)".to_string());
+                    local_modified = true;
                 }
                 None => {
                     had_issues = true;
                     skill_messages.push("- Digest compute failed".to_string());
+                    local_modified = true;
                 }
             }
         }
@@ -109,12 +112,49 @@ pub fn run_doctor(apply: bool) -> Result<()> {
             &s.source.repo,
         );
         referenced_caches.insert(cache_dir.clone());
+        let mut upstream_update: Option<String> = None;
+        if cache_dir.exists() {
+            if let Ok(branch) = git::detect_or_set_default_branch(&cache_dir, &s.source.url) {
+                let tip_ref = format!("refs/remotes/origin/{branch}");
+                if let Ok(new_sha) = git::rev_parse(&cache_dir, &tip_ref) {
+                    if new_sha != s.commit {
+                        upstream_update = Some(format!(
+                            "{} -> {}",
+                            short_sha(&s.commit),
+                            short_sha(&new_sha)
+                        ));
+                    }
+                }
+            }
+        }
         if !cache_dir.exists() {
             had_issues = true;
             skill_messages.push(format!("- Cache clone missing: {}", cache_dir.display()));
         } else if !git::has_object(&cache_dir, &s.commit).unwrap_or(false) {
             had_issues = true;
             skill_messages.push("- Locked commit missing from cache (force-push?)".to_string());
+        }
+
+        match (local_modified, upstream_update.as_ref()) {
+            (true, Some(update)) => {
+                skill_messages.push(format!(
+                    "- Local edits present and upstream advanced ({update}). Run 'sk sync-back {name}' to publish or revert changes, then 'sk upgrade {name}' to pick up the remote tip.",
+                    name = s.install_name
+                ));
+            }
+            (true, None) => {
+                skill_messages.push(format!(
+                    "- Local edits are ahead of the lockfile. Run 'sk sync-back {name}' if intentional, or discard them to restore the locked digest.",
+                    name = s.install_name
+                ));
+            }
+            (false, Some(update)) => {
+                skill_messages.push(format!(
+                    "- Upgrade available ({update}). Run 'sk upgrade {name}' to sync.",
+                    name = s.install_name
+                ));
+            }
+            (false, None) => {}
         }
 
         if !skill_messages.is_empty() {
@@ -224,6 +264,14 @@ fn clean_if_empty(dir: PathBuf) -> Result<()> {
         fs::remove_dir_all(dir)?;
     }
     Ok(())
+}
+
+fn short_sha(full: &str) -> &str {
+    if full.len() > 7 {
+        &full[..7]
+    } else {
+        full
+    }
 }
 
 fn validate_skill_manifest(dir: &Path) -> Result<(), String> {
