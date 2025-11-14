@@ -309,3 +309,100 @@ fn sync_back_refreshes_lock_to_merged_commit_after_auto_merge() {
         "lockfile should track merged commit"
     );
 }
+
+#[test]
+fn sync_back_refreshes_local_digest_to_merged_commit() {
+    let fx = CliFixture::new();
+    fx.sk_success(&["init"]);
+
+    let remote = fx.create_remote("skills-digest-refresh", "template", "sk-digest");
+    fx.install_from_remote(&remote, "sk-digest");
+
+    // Upstream changes land after install but before sync-back.
+    remote.overwrite_file("file.txt", "remote v2\n", "Upstream edit");
+
+    // Local edits add a new file so the sync-back branch diverges.
+    let skill_dir = fx.skill_dir("sk-digest");
+    fs::create_dir_all(&skill_dir).unwrap();
+    fs::write(skill_dir.join("local.txt"), "local content\n").unwrap();
+
+    let gh = FakeGh::new(&fx.root);
+    gh.clear_state();
+
+    let branch = "sk/digest-refresh";
+    let merge_repo = remote.work.to_string_lossy().to_string();
+    let mut cmd = fx.sk_cmd();
+    gh.configure_cmd(&mut cmd);
+    let out = cmd
+        .env("SK_TEST_GH_PR_STATE", "CLEAN")
+        .env("SK_TEST_GH_PR_URL", "https://example.test/pr/111")
+        .env("SK_TEST_GH_PR_NUMBER", "111")
+        .env("SK_TEST_GH_AUTO_MERGE_REPO", &merge_repo)
+        .env("SK_TEST_GH_AUTO_MERGE_BRANCH", branch)
+        .env("SK_SYNC_BACK_AUTO_MERGE_TIMEOUT_MS", "2000")
+        .env("SK_SYNC_BACK_AUTO_MERGE_POLL_MS", "100")
+        .args([
+            "sync-back",
+            "sk-digest",
+            "--branch",
+            branch,
+            "--message",
+            "Refresh digest after merge",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(
+        out.status.success(),
+        "sync-back failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let remote_skill_dir = if remote.skill_path() == "." {
+        remote.work.clone()
+    } else {
+        remote.work.join(remote.skill_path())
+    };
+    let local_file = fs::read_to_string(skill_dir.join("file.txt")).unwrap();
+    let remote_file = fs::read_to_string(remote_skill_dir.join("file.txt")).unwrap();
+    assert_eq!(
+        local_file, remote_file,
+        "local install should match upstream merged contents"
+    );
+
+    let local_digest = sk::digest::digest_dir(&skill_dir).unwrap();
+    let remote_digest = sk::digest::digest_dir(&remote_skill_dir).unwrap();
+    assert_eq!(
+        local_digest, remote_digest,
+        "local digest should equal merged commit digest"
+    );
+
+    let lock = fx.lock_json();
+    let entry = lock
+        .get("skills")
+        .and_then(|v| v.as_array())
+        .and_then(|skills| {
+            skills
+                .iter()
+                .find(|skill| skill.get("installName") == Some(&"sk-digest".into()))
+        })
+        .expect("lock entry exists");
+    let locked_digest = entry
+        .get("digest")
+        .and_then(|v| v.as_str())
+        .expect("digest field present");
+    assert_eq!(
+        locked_digest, local_digest,
+        "lock digest should capture merged tree"
+    );
+
+    let locked_commit = entry
+        .get("commit")
+        .and_then(|v| v.as_str())
+        .expect("commit field present");
+    let merged_head = remote.head();
+    assert_eq!(
+        locked_commit, merged_head,
+        "lockfile should track merged commit"
+    );
+}

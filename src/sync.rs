@@ -1,4 +1,4 @@
-use crate::{config, digest, git, lock, paths};
+use crate::{config, digest, git, install, lock, paths};
 use anyhow::{anyhow, bail, Context, Result};
 use chrono::Utc;
 use serde::Deserialize;
@@ -301,12 +301,19 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
         eprintln!("Warning: failed to spawn 'git worktree remove'. Guard will retry on drop.");
     }
 
+    let mut final_commit = head.clone();
+    if let Some(report) = pr_report.as_ref() {
+        final_commit = maybe_wait_for_auto_merge(&target, report, &head, args.installed_name)?;
+    }
+    if final_commit != head {
+        println!(
+            "Auto-merge landed additional upstream changes; refreshing '{}' to {}.",
+            args.installed_name,
+            short_sha(&final_commit)
+        );
+        refresh_install_from_commit(&target, &dest_installed, &final_commit)?;
+    }
     let digest = digest::digest_dir(&dest_installed)?;
-    let final_commit = if let Some(report) = pr_report {
-        maybe_wait_for_auto_merge(&target, &report, &head, args.installed_name)?
-    } else {
-        head.clone()
-    };
     let entry = lock::LockSkill {
         install_name: args.installed_name.to_string(),
         source: lock::Source {
@@ -348,6 +355,11 @@ fn purge_children_except_git(dir: &std::path::Path) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn refresh_install_from_commit(target: &SyncTarget, dest: &Path, commit: &str) -> Result<()> {
+    purge_children_except_git(dest)?;
+    install::extract_subdir_from_commit(&target.cache_dir, commit, &target.skill_path, dest)
 }
 
 fn build_existing_target(entry: lock::LockSkill, index: usize) -> Result<SyncTarget> {
