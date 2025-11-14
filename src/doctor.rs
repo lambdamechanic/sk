@@ -49,11 +49,15 @@ pub fn run_doctor(apply: bool) -> Result<()> {
     // Track cache repos referenced by the lockfile for later pruning
     let mut referenced_caches: HashSet<PathBuf> = HashSet::new();
     for s in &lf.skills {
-        println!("== {} ==", s.install_name);
+        let mut skill_messages: Vec<String> = Vec::new();
         let install_dir = install_root.join(&s.install_name);
+        let mut local_modified = false;
         if !install_dir.exists() {
             had_issues = true;
-            println!("- Missing installed dir: {}", install_dir.display());
+            skill_messages.push(format!(
+                "- Missing installed dir: {}",
+                install_dir.display()
+            ));
             if apply {
                 let cache_dir = paths::resolve_or_primary_cache_path(
                     &s.source.url,
@@ -69,12 +73,12 @@ pub fn run_doctor(apply: bool) -> Result<()> {
                         &s.source.skill_path,
                         &install_dir,
                     ) {
-                        println!("  Rebuild failed: {e}");
+                        skill_messages.push(format!("  Rebuild failed: {e}"));
                     } else {
-                        println!("  Rebuilt from locked commit.");
+                        skill_messages.push("  Rebuilt from locked commit.".to_string());
                     }
                 } else {
-                    println!("  Cannot rebuild: cache/commit missing.");
+                    skill_messages.push("  Cannot rebuild: cache/commit missing.".to_string());
                     // mark this exact lock entry for removal on apply
                     orphans_to_drop.insert(lock_entry_key(s));
                 }
@@ -82,19 +86,21 @@ pub fn run_doctor(apply: bool) -> Result<()> {
         } else {
             if let Err(msg) = validate_skill_manifest(&install_dir) {
                 had_issues = true;
-                println!("- {msg}");
+                skill_messages.push(format!("- {msg}"));
             }
             // digest
             let cur = digest::digest_dir(&install_dir).ok();
             match cur {
-                Some(h) if h == s.digest => println!("- Digest ok"),
+                Some(h) if h == s.digest => {}
                 Some(_) => {
                     had_issues = true;
-                    println!("- Digest mismatch (modified)");
+                    skill_messages.push("- Digest mismatch (modified)".to_string());
+                    local_modified = true;
                 }
                 None => {
                     had_issues = true;
-                    println!("- Digest compute failed");
+                    skill_messages.push("- Digest compute failed".to_string());
+                    local_modified = true;
                 }
             }
         }
@@ -106,20 +112,64 @@ pub fn run_doctor(apply: bool) -> Result<()> {
             &s.source.repo,
         );
         referenced_caches.insert(cache_dir.clone());
+        let mut upstream_update: Option<String> = None;
+        if cache_dir.exists() {
+            if let Ok(branch) = git::detect_or_set_default_branch(&cache_dir, &s.source.url) {
+                let tip_ref = format!("refs/remotes/origin/{branch}");
+                if let Ok(new_sha) = git::rev_parse(&cache_dir, &tip_ref) {
+                    if new_sha != s.commit {
+                        upstream_update = Some(format!(
+                            "{} -> {}",
+                            short_sha(&s.commit),
+                            short_sha(&new_sha)
+                        ));
+                    }
+                }
+            }
+        }
         if !cache_dir.exists() {
             had_issues = true;
-            println!("- Cache clone missing: {}", cache_dir.display());
+            skill_messages.push(format!("- Cache clone missing: {}", cache_dir.display()));
         } else if !git::has_object(&cache_dir, &s.commit).unwrap_or(false) {
             had_issues = true;
-            println!("- Locked commit missing from cache (force-push?)");
+            skill_messages.push("- Locked commit missing from cache (force-push?)".to_string());
+        }
+
+        match (local_modified, upstream_update.as_ref()) {
+            (true, Some(update)) => {
+                skill_messages.push(format!(
+                    "- Local edits present and upstream advanced ({update}). Run 'sk sync-back {name}' to publish or revert changes, then 'sk upgrade {name}' to pick up the remote tip.",
+                    name = s.install_name
+                ));
+            }
+            (true, None) => {
+                skill_messages.push(format!(
+                    "- Local edits are ahead of the lockfile. Run 'sk sync-back {name}' if intentional, or discard them to restore the locked digest.",
+                    name = s.install_name
+                ));
+            }
+            (false, Some(update)) => {
+                skill_messages.push(format!(
+                    "- Upgrade available ({update}). Run 'sk upgrade {name}' to sync.",
+                    name = s.install_name
+                ));
+            }
+            (false, None) => {}
+        }
+
+        if !skill_messages.is_empty() {
+            println!("== {} ==", s.install_name);
+            for msg in skill_messages {
+                println!("{msg}");
+            }
         }
     }
 
     // Detect and optionally prune unreferenced cache clones
     {
         let cache_root = paths::cache_root();
+        let mut cache_messages: Vec<String> = Vec::new();
         if cache_root.exists() {
-            println!("== Cache ==");
             // Walk cache_root/<host>/<owner>/<repo>
             if let Ok(hosts) = fs::read_dir(&cache_root) {
                 for host in hosts.flatten() {
@@ -143,22 +193,22 @@ pub fn run_doctor(apply: bool) -> Result<()> {
                                     }
                                     if !referenced_caches.contains(&repo_path) {
                                         had_issues = true;
-                                        println!(
+                                        cache_messages.push(format!(
                                             "- Unreferenced cache clone: {}",
                                             repo_path.display()
-                                        );
+                                        ));
                                         if apply {
                                             if let Err(e) = fs::remove_dir_all(&repo_path) {
-                                                println!(
+                                                cache_messages.push(format!(
                                                     "  Failed to prune cache '{}': {}",
                                                     repo_path.display(),
                                                     e
-                                                );
+                                                ));
                                             } else {
-                                                println!(
+                                                cache_messages.push(format!(
                                                     "  Pruned unreferenced cache: {}",
                                                     repo_path.display()
-                                                );
+                                                ));
                                                 // Try cleaning up empty parents (owner/, host/)
                                                 let _ = clean_if_empty(owner.path());
                                                 let _ = clean_if_empty(host.path());
@@ -170,6 +220,12 @@ pub fn run_doctor(apply: bool) -> Result<()> {
                         }
                     }
                 }
+            }
+        }
+        if !cache_messages.is_empty() {
+            println!("== Cache ==");
+            for msg in cache_messages {
+                println!("{msg}");
             }
         }
     }
@@ -208,6 +264,14 @@ fn clean_if_empty(dir: PathBuf) -> Result<()> {
         fs::remove_dir_all(dir)?;
     }
     Ok(())
+}
+
+fn short_sha(full: &str) -> &str {
+    if full.len() > 7 {
+        &full[..7]
+    } else {
+        full
+    }
 }
 
 fn validate_skill_manifest(dir: &Path) -> Result<(), String> {
