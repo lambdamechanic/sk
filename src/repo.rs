@@ -1,7 +1,8 @@
-use crate::{config, git, paths, skills};
+use crate::{config, git, lock, paths, skills};
 use anyhow::{bail, Context, Result};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -64,12 +65,36 @@ pub fn run_repo_list(args: RepoListArgs) -> Result<()> {
     let registry = RepoRegistry::load(&registry_path(&project_root))?;
     if args.json {
         println!("{}", serde_json::to_string_pretty(&registry.repos)?);
-    } else if registry.repos.is_empty() {
+        return Ok(());
+    }
+
+    if registry.repos.is_empty() {
         println!("(no repos registered)");
-    } else {
-        for entry in registry.repos {
-            println!("{}\t{}@{}", entry.alias, entry.spec.owner, entry.spec.repo);
-        }
+        return Ok(());
+    }
+
+    let lock_path = project_root.join("skills.lock.json");
+    let lockfile = lock::Lockfile::load_or_empty(&lock_path)?;
+    let mut installed_counts: HashMap<String, usize> = HashMap::new();
+    for skill in lockfile.skills {
+        let spec = skill.source.repo_spec();
+        let key = repo_key(spec);
+        *installed_counts.entry(key).or_default() += 1;
+    }
+
+    println!(
+        "{:<12} {:<40} {:>6} {:>10}",
+        "ALIAS", "REPO", "SKILLS", "INSTALLED"
+    );
+    for entry in &registry.repos {
+        let spec = &entry.spec;
+        let repo_label = format!("{}/{}/{}", spec.host, spec.owner, spec.repo);
+        let available = load_skills_for_spec(spec)?.len();
+        let installed = installed_counts.get(&repo_key(spec)).copied().unwrap_or(0);
+        println!(
+            "{:<12} {:<40} {:>6} {:>10}",
+            entry.alias, repo_label, available, installed
+        );
     }
     Ok(())
 }
@@ -270,6 +295,10 @@ fn load_skills_for_spec(spec: &git::RepoSpec) -> Result<Vec<skills::DiscoveredSk
     let default_branch = git::detect_or_set_default_branch(&cache_dir, spec)?;
     let commit = git::rev_parse(&cache_dir, &format!("refs/remotes/origin/{default_branch}"))?;
     skills::list_skills_in_repo(&cache_dir, &commit)
+}
+
+fn repo_key(spec: &git::RepoSpec) -> String {
+    format!("{}|{}|{}", spec.host, spec.owner, spec.repo)
 }
 
 fn matches_query(needle: &str, skill: &skills::DiscoveredSkill) -> bool {
