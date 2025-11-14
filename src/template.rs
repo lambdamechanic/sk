@@ -1,7 +1,7 @@
 use crate::{config, git, paths, skills};
 use anyhow::{anyhow, bail, Context, Result};
 use regex::Regex;
-use serde::Serialize;
+use serde_yaml::{Mapping, Value};
 use std::fs;
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -178,26 +178,52 @@ fn rewrite_skill_metadata(skill_md: &Path, name: &str, description: &str) -> Res
     let data =
         fs::read_to_string(skill_md).with_context(|| format!("reading {}", skill_md.display()))?;
     let frontmatter = Regex::new(r"(?s)^---\r?\n(.*?)\r?\n---\r?\n?").expect("valid regex");
-    let mat = frontmatter
-        .find(&data)
+    let captures = frontmatter
+        .captures(&data)
         .ok_or_else(|| anyhow!("SKILL.md missing YAML front-matter"))?;
-    let remainder = &data[mat.end()..];
-    let yaml = serde_yaml::to_string(&SkillFrontmatter { name, description })?;
+    let block = captures
+        .get(0)
+        .ok_or_else(|| anyhow!("missing front-matter block"))?;
+    let yaml_section = captures
+        .get(1)
+        .map(|m| m.as_str())
+        .ok_or_else(|| anyhow!("missing YAML payload"))?;
+
+    let mut parsed: Value =
+        serde_yaml::from_str(yaml_section).context("parsing SKILL front-matter YAML")?;
+    let map = parsed
+        .as_mapping_mut()
+        .ok_or_else(|| anyhow!("SKILL front-matter must be a YAML mapping"))?;
+    upsert_yaml_string(map, "name", name);
+    upsert_yaml_string(map, "description", description);
+
+    let mut yaml = serde_yaml::to_string(&parsed)?;
+    trim_trailing_newlines(&mut yaml);
+
     let mut new_content = String::new();
     new_content.push_str("---\n");
     new_content.push_str(&yaml);
-    if !yaml.ends_with('\n') {
+    if !yaml.is_empty() {
         new_content.push('\n');
     }
     new_content.push_str("---\n");
-    new_content.push_str(remainder);
+    new_content.push_str(&data[block.end()..]);
     fs::write(skill_md, new_content)
         .with_context(|| format!("rewriting {}", skill_md.display()))?;
     Ok(())
 }
 
-#[derive(Serialize)]
-struct SkillFrontmatter<'a> {
-    name: &'a str,
-    description: &'a str,
+fn upsert_yaml_string(map: &mut Mapping, key: &str, value: &str) {
+    let yaml_key = Value::String(key.to_string());
+    if let Some(existing) = map.get_mut(&yaml_key) {
+        *existing = Value::String(value.to_string());
+    } else {
+        map.insert(yaml_key, Value::String(value.to_string()));
+    }
+}
+
+fn trim_trailing_newlines(yaml: &mut String) {
+    while yaml.ends_with(['\n', '\r']) {
+        yaml.pop();
+    }
 }

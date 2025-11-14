@@ -3,7 +3,7 @@ use std::fs;
 #[path = "support/mod.rs"]
 mod support;
 
-use support::CliFixture;
+use support::{normalize_newlines, CliFixture};
 
 #[test]
 fn template_create_scaffolds_skill() {
@@ -26,7 +26,7 @@ fn template_create_scaffolds_skill() {
     let meta = fs::read_to_string(skill_dir.join("SKILL.md")).unwrap();
     assert!(meta.contains("name: custom-skill"));
     assert!(meta.contains("description: Custom skill description"));
-    let copied = fs::read_to_string(skill_dir.join("file.txt")).unwrap();
+    let copied = normalize_newlines(&fs::read_to_string(skill_dir.join("file.txt")).unwrap());
     assert_eq!(copied, "v1\n");
 }
 
