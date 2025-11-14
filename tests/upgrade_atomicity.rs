@@ -193,7 +193,7 @@ proptest! {
         for i in 0..n {
             let repo = format!("r{i}");
             let skill_path = format!("skill-{i}");
-            let (bare, v1, _v2) = init_skill_repo(&remotes_root, &repo, &skill_path);
+            let (bare, v1, v2) = init_skill_repo(&remotes_root, &repo, &skill_path);
             let file_url = {
                 #[cfg(windows)]
                 {
@@ -212,11 +212,11 @@ proptest! {
             let dest = project.join("skills").join(&installed_name);
             extract_subdir(&cache, &v1, &skill_path, &dest);
             let digest = digest_dir(&dest);
-            entries.push((installed_name, repo, skill_path, v1, digest, file_url));
+            entries.push((installed_name, repo, skill_path, v1, v2, digest, file_url));
         }
 
         // Mark one as modified by appending to file
-        let (name_k, _repo_k, _path_k, _v1_k, _digest_k, _url_k) = entries[modified_idx].clone();
+        let (name_k, _repo_k, _path_k, _v1_k, _v2_k, _digest_k, _url_k) = entries[modified_idx].clone();
         let f = project.join("skills").join(&name_k).join("file.txt");
         fs::OpenOptions::new().append(true).open(&f).unwrap().write_all(b"local-edit\n").unwrap();
         let _new_digest = digest_dir(&project.join("skills").join(&name_k));
@@ -224,7 +224,7 @@ proptest! {
         // Write lockfile with v1 commits and original digests
         let lock = serde_json::json!({
             "version": 1,
-            "skills": entries.iter().map(|(name, repo, skill_path, v1, digest, url)| serde_json::json!({
+            "skills": entries.iter().map(|(name, repo, skill_path, v1, _v2, digest, url)| serde_json::json!({
                 "installName": name,
                 "source": {"url":url,"host":host,"owner":owner,"repo":repo,"skillPath": skill_path},
                 "commit": v1,
@@ -236,26 +236,35 @@ proptest! {
         write(&project.join("skills.lock.json"), &serde_json::to_string_pretty(&lock).unwrap());
 
         // Snapshot pre-state
-        let pre_lock = fs::read_to_string(project.join("skills.lock.json")).unwrap();
-        let pre_digests: Vec<String> = entries
-            .iter()
-            .map(|(name, _, _, _, _, _)| digest_dir(&project.join("skills").join(name)))
-            .collect();
-
-        // Run `sk upgrade --all` and expect failure (modified)
+        // Run `sk upgrade --all` and expect clean skills to advance while modified ones are skipped
         let mut cmd = cargo_bin_cmd!("sk");
         cmd.current_dir(&project);
         cmd.env("SK_CACHE_DIR", cache_root.to_str().unwrap());
         let out = cmd.args(["upgrade", "--all"]).output().unwrap();
-        assert!(!out.status.success(), "upgrade unexpectedly succeeded");
+        assert!(out.status.success(), "upgrade failed: {}", String::from_utf8_lossy(&out.stderr));
 
-        // Assert no changes on disk and lockfile unchanged
         let post_lock = fs::read_to_string(project.join("skills.lock.json")).unwrap();
-        assert_eq!(pre_lock, post_lock, "lockfile changed on failure");
-        let post_digests: Vec<String> = entries
-            .iter()
-            .map(|(name, _, _, _, _, _)| digest_dir(&project.join("skills").join(name)))
-            .collect();
-        prop_assert_eq!(pre_digests, post_digests);
+        let parsed: serde_json::Value = serde_json::from_str(&post_lock).unwrap();
+        let skills = parsed.get("skills").and_then(|v| v.as_array()).unwrap();
+
+        for (idx, (name, _repo, _path, v1, v2, _digest, _url)) in entries.iter().enumerate() {
+            let entry = skills
+                .iter()
+                .find(|e| e.get("installName") == Some(&serde_json::Value::String(name.clone())))
+                .expect("lock entry");
+            let commit = entry
+                .get("commit")
+                .and_then(|v| v.as_str())
+                .expect("commit str");
+            let file_txt = fs::read_to_string(project.join("skills").join(name).join("file.txt")).unwrap();
+            if idx == modified_idx {
+                prop_assert_eq!(commit, v1);
+                prop_assert!(file_txt.contains("local-edit"));
+            } else {
+                prop_assert_eq!(commit, v2);
+                prop_assert!(file_txt.contains("v2"));
+                prop_assert!(!file_txt.contains("local-edit"));
+            }
+        }
     }
 }
