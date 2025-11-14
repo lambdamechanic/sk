@@ -313,24 +313,74 @@ const FAKE_GH_SOURCE: &str = r#"use std::{
     env,
     fs,
     path::PathBuf,
-    process,
+    process::{self, Command},
 };
 
-fn read_state(path: &PathBuf) -> Option<(String, String, String)> {
+#[derive(Clone, Debug)]
+struct PrState {
+    number: String,
+    url: String,
+    status: String,
+    pr_state: String,
+    merge_commit: Option<String>,
+}
+
+fn read_state(path: &PathBuf) -> Option<PrState> {
     let data = fs::read_to_string(path).ok()?;
-    let mut parts = data.splitn(3, '|');
+    let mut parts = data.splitn(5, '|');
     let number = parts.next()?.to_string();
     let url = parts.next()?.to_string();
     let status = parts.next()?.to_string();
-    Some((number, url, status))
+    let pr_state = parts
+        .next()
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "OPEN".into());
+    let merge_commit = parts
+        .next()
+        .and_then(|s| if s.is_empty() { None } else { Some(s.to_string()) });
+    Some(PrState {
+        number,
+        url,
+        status,
+        pr_state,
+        merge_commit,
+    })
 }
 
-fn write_state(path: &PathBuf, number: &str, url: &str, status: &str) {
+fn write_state(path: &PathBuf, state: &PrState) {
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);
     }
-    let content = format!("{number}|{url}|{status}");
+    let merge = state.merge_commit.clone().unwrap_or_default();
+    let content = format!(
+        "{}|{}|{}|{}|{}",
+        state.number, state.url, state.status, state.pr_state, merge
+    );
     fs::write(path, content).expect("write fake gh state");
+}
+
+fn run_git(repo: &PathBuf, args: &[&str]) {
+    let status = Command::new("git")
+        .current_dir(repo)
+        .args(args)
+        .status()
+        .expect("run git");
+    if !status.success() {
+        eprintln!("git {:?} failed in {}", args, repo.display());
+        process::exit(1);
+    }
+}
+
+fn rev_parse(repo: &PathBuf, rev: &str) -> Option<String> {
+    let out = Command::new("git")
+        .current_dir(repo)
+        .args(["rev-parse", rev])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
 fn main() {
@@ -351,14 +401,15 @@ fn main() {
     );
     match sub.as_str() {
         "list" => {
-            if let Some((number, url, status)) = read_state(&state_path) {
-                let mergeable = if status.eq_ignore_ascii_case("DIRTY") {
+            if let Some(state) = read_state(&state_path) {
+                let mergeable = if state.status.eq_ignore_ascii_case("DIRTY") {
                     "CONFLICTING"
                 } else {
                     "MERGEABLE"
                 };
                 println!(
-                    "[{{\"number\":{number},\"url\":\"{url}\",\"mergeStateStatus\":\"{status}\",\"mergeable\":\"{mergeable}\"}}]"
+                    "[{{\"number\":{},\"url\":\"{}\",\"mergeStateStatus\":\"{}\",\"mergeable\":\"{}\"}}]",
+                    state.number, state.url, state.status, mergeable
                 );
             } else {
                 println!("[]");
@@ -366,9 +417,17 @@ fn main() {
         }
         "create" => {
             let status = env::var("SK_TEST_GH_PR_STATE").unwrap_or_else(|_| "CLEAN".into());
-            let url = env::var("SK_TEST_GH_PR_URL").unwrap_or_else(|_| "https://example.test/pr/1".into());
+            let url = env::var("SK_TEST_GH_PR_URL")
+                .unwrap_or_else(|_| "https://example.test/pr/1".into());
             let number = env::var("SK_TEST_GH_PR_NUMBER").unwrap_or_else(|_| "1".into());
-            write_state(&state_path, &number, &url, &status);
+            let state = PrState {
+                number: number.clone(),
+                url: url.clone(),
+                status,
+                pr_state: "OPEN".into(),
+                merge_commit: None,
+            };
+            write_state(&state_path, &state);
             println!("{url}");
         }
         "merge" => {
@@ -376,14 +435,58 @@ fn main() {
                 eprintln!("{msg}");
                 process::exit(1);
             }
-            let status = read_state(&state_path)
-                .map(|(_, _, status)| status)
-                .unwrap_or_else(|| "CLEAN".into());
-            if status.eq_ignore_ascii_case("DIRTY") {
+            let mut state = read_state(&state_path).unwrap_or_else(|| {
+                eprintln!("no PR to merge");
+                process::exit(1);
+            });
+            if state.status.eq_ignore_ascii_case("DIRTY") {
                 eprintln!("conflict");
                 process::exit(1);
             }
+            let mut merge_commit = env::var("SK_TEST_GH_MERGE_COMMIT_SHA")
+                .ok()
+                .filter(|s| !s.is_empty());
+            if merge_commit.is_none() {
+                merge_commit = env::var("SK_TEST_SYNC_BACK_HEAD_SHA")
+                    .ok()
+                    .filter(|s| !s.is_empty());
+            }
+            if let (Ok(repo), Ok(branch)) =
+                (env::var("SK_TEST_GH_AUTO_MERGE_REPO"), env::var("SK_TEST_GH_AUTO_MERGE_BRANCH"))
+            {
+                let repo_path = PathBuf::from(repo);
+                run_git(&repo_path, &["fetch", "origin"]);
+                run_git(&repo_path, &["checkout", "main"]);
+                let target = format!("origin/{branch}");
+                run_git(&repo_path, &["merge", "--no-ff", &target, "-m", "Fake auto-merge"]);
+                run_git(&repo_path, &["push", "origin", "main"]);
+                merge_commit = rev_parse(&repo_path, "HEAD");
+            }
+            let final_commit = merge_commit.unwrap_or_else(|| "feedface".into());
+            state.pr_state = "MERGED".into();
+            state.merge_commit = Some(final_commit);
+            write_state(&state_path, &state);
             eprintln!("merge ok");
+        }
+        "view" => {
+            let Some(state) = read_state(&state_path) else {
+                eprintln!("no PR to view");
+                process::exit(1);
+            };
+            let merged_at = if state.pr_state.eq_ignore_ascii_case("MERGED") {
+                "\"2024-01-01T00:00:00Z\"".to_string()
+            } else {
+                "null".to_string()
+            };
+            let merge_commit = state
+                .merge_commit
+                .as_ref()
+                .map(|sha| format!("{{\"oid\":\"{}\"}}", sha))
+                .unwrap_or_else(|| "null".to_string());
+            println!(
+                "{{\"number\":{},\"url\":\"{}\",\"state\":\"{}\",\"mergeCommit\":{},\"mergedAt\":{}}}",
+                state.number, state.url, state.pr_state, merge_commit, merged_at
+            );
         }
         other => {
             eprintln!("fake gh unsupported subcommand: {other}");

@@ -234,3 +234,78 @@ fn sync_back_points_to_auto_merge_settings_when_disabled() {
         "stdout missing auto-merge tip: {stdout}"
     );
 }
+
+#[test]
+fn sync_back_refreshes_lock_to_merged_commit_after_auto_merge() {
+    let fx = CliFixture::new();
+    fx.sk_success(&["init"]);
+
+    let remote = fx.create_remote("skills-lock-refresh", "template", "template-skill");
+
+    let skill_dir = fx.skill_dir("sk-merged");
+    fs::create_dir_all(&skill_dir).unwrap();
+    fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: sk-merged\ndescription: lock refresh test\n---\n",
+    )
+    .unwrap();
+    fs::write(skill_dir.join("README.md"), "lock refresh content\n").unwrap();
+
+    let gh = FakeGh::new(&fx.root);
+    gh.clear_state();
+
+    let branch = "sk/lock-refresh";
+    let repo_url = remote.file_url();
+    let merge_repo = remote.work.to_string_lossy().to_string();
+    let mut cmd = fx.sk_cmd();
+    gh.configure_cmd(&mut cmd);
+    let out = cmd
+        .env("SK_TEST_GH_PR_STATE", "CLEAN")
+        .env("SK_TEST_GH_PR_URL", "https://example.test/pr/909")
+        .env("SK_TEST_GH_PR_NUMBER", "909")
+        .env("SK_TEST_GH_AUTO_MERGE_REPO", &merge_repo)
+        .env("SK_TEST_GH_AUTO_MERGE_BRANCH", branch)
+        .env("SK_SYNC_BACK_AUTO_MERGE_TIMEOUT_MS", "2000")
+        .env("SK_SYNC_BACK_AUTO_MERGE_POLL_MS", "100")
+        .args([
+            "sync-back",
+            "sk-merged",
+            "--repo",
+            &repo_url,
+            "--skill-path",
+            remote.skill_path(),
+            "--branch",
+            branch,
+            "--message",
+            "Lock refresh test",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(
+        out.status.success(),
+        "sync-back failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let lock = fx.lock_json();
+    let entry = lock
+        .get("skills")
+        .and_then(|v| v.as_array())
+        .and_then(|skills| {
+            skills
+                .iter()
+                .find(|skill| skill.get("installName") == Some(&"sk-merged".into()))
+        })
+        .expect("lock entry exists");
+    let locked_commit = entry
+        .get("commit")
+        .and_then(|v| v.as_str())
+        .expect("commit field present");
+
+    let merged_head = remote.head();
+    assert_eq!(
+        locked_commit, merged_head,
+        "lockfile should track merged commit"
+    );
+}
