@@ -135,9 +135,6 @@ fn cmd_repo(cmd: RepoCmd) -> Result<()> {
         }),
     }
 }
-        }),
-    }
-}
 
 fn cmd_init(root_flag: Option<&str>) -> Result<()> {
     let project_root = git::ensure_git_repo()?;
