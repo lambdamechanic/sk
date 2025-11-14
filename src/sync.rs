@@ -1,7 +1,9 @@
-use crate::{config, digest, git, lock, paths};
+use crate::{config, digest, git, install, lock, paths};
 use anyhow::{anyhow, bail, Context, Result};
 use chrono::Utc;
 use serde::Deserialize;
+use serde_json::Value as JsonValue;
+use std::env;
 use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::symlink;
@@ -9,6 +11,8 @@ use std::os::unix::fs::symlink;
 use std::os::windows::fs::{symlink_dir, symlink_file};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::thread;
+use std::time::{Duration, Instant};
 use tempfile::TempDir;
 use walkdir::WalkDir;
 
@@ -28,6 +32,11 @@ struct SyncTarget {
     commit: String,
     skill_path: String,
     lock_index: Option<usize>,
+}
+
+struct PrAutomationReport {
+    pr: GhPrInfo,
+    auto_merge_armed: bool,
 }
 
 pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
@@ -229,6 +238,10 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
             bail!("git commit failed: {}", combined.trim());
         }
     }
+    let head = git::rev_parse(&wt_path, "HEAD")?;
+    if env::var_os("SK_TEST_GH_STATE_FILE").is_some() {
+        env::set_var("SK_TEST_SYNC_BACK_HEAD_SHA", &head);
+    }
 
     // Push branch
     let push_out = Command::new("git")
@@ -242,12 +255,18 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
         ])
         .output()
         .context("spawn git push failed")?;
-    if push_out.status.success() {
+    let pr_report = if push_out.status.success() {
         let owner = &target.spec.owner;
         let repo = &target.spec.repo;
         println!("Pushed branch '{branch_name}' to origin for {owner}/{repo}.");
-        if let Err(err) = automate_pr_flow(&wt_path, &branch_name, &target.spec) {
-            eprintln!("Warning: failed to automate PR creation/merge for '{branch_name}': {err:#}");
+        match automate_pr_flow(&wt_path, &branch_name, &target.spec) {
+            Ok(report) => report,
+            Err(err) => {
+                eprintln!(
+                    "Warning: failed to automate PR creation/merge for '{branch_name}': {err:#}"
+                );
+                None
+            }
         }
     } else {
         let stderr = String::from_utf8_lossy(&push_out.stderr);
@@ -257,9 +276,7 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
             "git push failed: {}. You may not have write access; consider forking and repointing the source.",
             combined.trim()
         );
-    }
-
-    let head = git::rev_parse(&wt_path, "HEAD")?;
+    };
 
     // Success: attempt to remove worktree now; only disarm guard on success
     let rm_status = Command::new("git")
@@ -284,6 +301,18 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
         eprintln!("Warning: failed to spawn 'git worktree remove'. Guard will retry on drop.");
     }
 
+    let mut final_commit = head.clone();
+    if let Some(report) = pr_report.as_ref() {
+        final_commit = maybe_wait_for_auto_merge(&target, report, &head, args.installed_name)?;
+    }
+    if final_commit != head {
+        println!(
+            "Auto-merge landed additional upstream changes; refreshing '{}' to {}.",
+            args.installed_name,
+            short_sha(&final_commit)
+        );
+        refresh_install_from_commit(&target, &dest_installed, &final_commit)?;
+    }
     let digest = digest::digest_dir(&dest_installed)?;
     let entry = lock::LockSkill {
         install_name: args.installed_name.to_string(),
@@ -292,7 +321,7 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
             skill_path: target.skill_path.clone(),
         },
         legacy_ref: None,
-        commit: head,
+        commit: final_commit,
         digest,
         installed_at: Utc::now().to_rfc3339(),
     };
@@ -326,6 +355,11 @@ fn purge_children_except_git(dir: &std::path::Path) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn refresh_install_from_commit(target: &SyncTarget, dest: &Path, commit: &str) -> Result<()> {
+    purge_children_except_git(dest)?;
+    install::extract_subdir_from_commit(&target.cache_dir, commit, &target.skill_path, dest)
 }
 
 fn build_existing_target(entry: lock::LockSkill, index: usize) -> Result<SyncTarget> {
@@ -402,12 +436,16 @@ fn normalize_skill_path(input: &str) -> String {
     }
 }
 
-fn automate_pr_flow(wt_path: &Path, branch_name: &str, spec: &git::RepoSpec) -> Result<()> {
+fn automate_pr_flow(
+    wt_path: &Path,
+    branch_name: &str,
+    spec: &git::RepoSpec,
+) -> Result<Option<PrAutomationReport>> {
     if which::which("gh").is_err() {
         println!(
             "Skipping PR automation: 'gh' CLI not found. Install https://cli.github.com/ to auto-open PRs."
         );
-        return Ok(());
+        return Ok(None);
     }
 
     let repo_selector = format_repo_selector(spec);
@@ -418,7 +456,8 @@ fn automate_pr_flow(wt_path: &Path, branch_name: &str, spec: &git::RepoSpec) -> 
         println!("Reusing PR {} for branch '{branch_name}'.", pr.url);
     }
 
-    match auto_merge_pull_request(&repo_selector, wt_path, &pr) {
+    let outcome = auto_merge_pull_request(&repo_selector, wt_path, &pr);
+    match &outcome {
         AutoMergeOutcome::Armed => {
             println!(
                 "Auto-merge armed; GitHub will land {} once required checks pass.",
@@ -433,13 +472,16 @@ fn automate_pr_flow(wt_path: &Path, branch_name: &str, spec: &git::RepoSpec) -> 
         }
         AutoMergeOutcome::Skipped(reason) => {
             println!("Auto-merge skipped for {} ({reason}).", pr.url);
-            if let Some(tip) = auto_merge_tip(&reason, spec) {
+            if let Some(tip) = auto_merge_tip(reason, spec) {
                 println!("{tip}");
             }
         }
     }
 
-    Ok(())
+    Ok(Some(PrAutomationReport {
+        pr,
+        auto_merge_armed: matches!(outcome, AutoMergeOutcome::Armed),
+    }))
 }
 
 fn ensure_pull_request(
@@ -586,6 +628,169 @@ fn auto_merge_tip(reason: &str, spec: &git::RepoSpec) -> Option<String> {
     Some(format!(
         "Tip: enable auto-merge with `{cmd}` or toggle Auto-merge under Settings → General ({settings_url})."
     ))
+}
+
+fn maybe_wait_for_auto_merge(
+    target: &SyncTarget,
+    report: &PrAutomationReport,
+    pushed_head: &str,
+    install_name: &str,
+) -> Result<String> {
+    if !report.auto_merge_armed {
+        return Ok(pushed_head.to_string());
+    }
+    let timeout = auto_merge_timeout();
+    let poll = auto_merge_poll_interval();
+    let seconds = timeout.as_secs();
+    println!(
+        "Auto-merge armed; polling {} for the merged commit (up to {}s)...",
+        report.pr.url,
+        if seconds == 0 {
+            timeout.as_millis() as u64 / 1000
+        } else {
+            seconds
+        }
+    );
+    match wait_for_merge_commit(target, report, timeout, poll) {
+        Ok(Some(commit)) => {
+            println!(
+                "Auto-merge landed commit {}. Updating lockfile.",
+                short_sha(&commit)
+            );
+            Ok(commit)
+        }
+        Ok(None) => {
+            println!(
+                "Auto-merge for '{}' has not finished yet; keeping lock at {}. Run 'sk upgrade {}' after the PR merges.",
+                install_name,
+                short_sha(pushed_head),
+                install_name
+            );
+            Ok(pushed_head.to_string())
+        }
+        Err(err) => {
+            eprintln!(
+                "Warning: unable to confirm merged commit for '{}': {err:#}. Keeping lock at {}.",
+                install_name,
+                short_sha(pushed_head)
+            );
+            Ok(pushed_head.to_string())
+        }
+    }
+}
+
+fn wait_for_merge_commit(
+    target: &SyncTarget,
+    report: &PrAutomationReport,
+    timeout: Duration,
+    poll: Duration,
+) -> Result<Option<String>> {
+    let repo_selector = format_repo_selector(&target.spec);
+    let start = Instant::now();
+    loop {
+        let status = query_pr_merge_status(&repo_selector, report.pr.number)?;
+        if status.is_merged() {
+            if let Some(commit) = status.merge_commit_oid() {
+                git::ensure_cached_repo(&target.cache_dir, &target.spec)?;
+                if git::has_object(&target.cache_dir, &commit)? {
+                    return Ok(Some(commit));
+                }
+            }
+        } else if status.is_closed() {
+            return Ok(None);
+        }
+        if start.elapsed() >= timeout {
+            return Ok(None);
+        }
+        if poll.is_zero() {
+            thread::yield_now();
+        } else {
+            thread::sleep(poll);
+        }
+    }
+}
+
+fn query_pr_merge_status(repo_selector: &str, number: u64) -> Result<GhPrMergeStatus> {
+    let out = Command::new("gh")
+        .args([
+            "pr",
+            "view",
+            &number.to_string(),
+            "--json",
+            "state,mergeCommit",
+            "-R",
+            repo_selector,
+        ])
+        .output()
+        .context("run gh pr view")?;
+    if !out.status.success() {
+        bail!(
+            "gh pr view failed: {}",
+            format_gh_failure(&out.stdout, &out.stderr)
+        );
+    }
+    let status: GhPrMergeStatus =
+        serde_json::from_slice(&out.stdout).context("parse gh pr view JSON output")?;
+    Ok(status)
+}
+
+fn auto_merge_timeout() -> Duration {
+    duration_from_env_ms("SK_SYNC_BACK_AUTO_MERGE_TIMEOUT_MS", 120_000)
+}
+
+fn auto_merge_poll_interval() -> Duration {
+    duration_from_env_ms("SK_SYNC_BACK_AUTO_MERGE_POLL_MS", 2_000)
+}
+
+fn duration_from_env_ms(key: &str, default_ms: u64) -> Duration {
+    env::var(key)
+        .ok()
+        .and_then(|raw| raw.parse::<u64>().ok())
+        .map(Duration::from_millis)
+        .unwrap_or_else(|| Duration::from_millis(default_ms))
+}
+
+#[derive(Debug, Deserialize)]
+struct GhPrMergeStatus {
+    state: Option<String>,
+    #[serde(rename = "mergeCommit")]
+    merge_commit: Option<JsonValue>,
+}
+
+impl GhPrMergeStatus {
+    fn is_merged(&self) -> bool {
+        matches!(
+            self.state
+                .as_deref()
+                .map(|s| s.eq_ignore_ascii_case("merged")),
+            Some(true)
+        )
+    }
+
+    fn is_closed(&self) -> bool {
+        matches!(
+            self.state
+                .as_deref()
+                .map(|s| s.eq_ignore_ascii_case("closed")),
+            Some(true)
+        )
+    }
+
+    fn merge_commit_oid(&self) -> Option<String> {
+        self.merge_commit.as_ref().and_then(|value| match value {
+            JsonValue::String(s) if !s.is_empty() => Some(s.clone()),
+            JsonValue::Object(map) => map
+                .get("oid")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .or_else(|| {
+                    map.get("sha")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                }),
+            _ => None,
+        })
+    }
 }
 
 fn format_gh_failure(stdout: &[u8], stderr: &[u8]) -> String {
@@ -751,6 +956,10 @@ impl Drop for WorktreeGuard {
             ])
             .status();
     }
+}
+
+fn short_sha(full: &str) -> &str {
+    full.get(0..7).unwrap_or(full)
 }
 
 #[cfg(test)]

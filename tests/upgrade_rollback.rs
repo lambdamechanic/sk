@@ -1,5 +1,4 @@
 use assert_cmd::cargo::cargo_bin_cmd;
-use sha2::Digest;
 use std::fs;
 use std::io::Write;
 use std::path::Path;
@@ -25,6 +24,10 @@ fn write(path: &Path, contents: &str) {
         fs::create_dir_all(p).unwrap();
     }
     fs::write(path, contents).unwrap();
+}
+
+fn digest_dir(dir: &Path) -> String {
+    sk::digest::digest_dir(dir).expect("compute digest")
 }
 
 fn hashed_leaf(url: &str, repo: &str) -> String {
@@ -138,23 +141,7 @@ fn upgrade_rolls_back_when_apply_fails_mid_loop() {
         assert!(ok);
         let _ = arch.wait();
         // digest
-        let digest = {
-            use sha2::{Digest, Sha256};
-            let mut h = Sha256::new();
-            let mut files: Vec<_> = walkdir::WalkDir::new(&dest)
-                .into_iter()
-                .filter_map(|e| e.ok())
-                .filter(|e| e.file_type().is_file())
-                .map(|e| e.into_path())
-                .collect();
-            files.sort();
-            for p in files {
-                let rel = p.strip_prefix(&dest).unwrap();
-                h.update(rel.to_string_lossy().as_bytes());
-                h.update(fs::read(&p).unwrap());
-            }
-            format!("sha256:{:x}", h.finalize())
-        };
+        let digest = digest_dir(&dest);
         skills.push((format!("s{i}"), repo.to_string(), head_prev, digest));
     }
     let lock = serde_json::json!({
@@ -178,20 +165,7 @@ fn upgrade_rolls_back_when_apply_fails_mid_loop() {
         .iter()
         .map(|(name, _, _, _)| {
             let dest = project.join("skills").join(name);
-            let mut h = sha2::Sha256::new();
-            let mut files: Vec<_> = walkdir::WalkDir::new(&dest)
-                .into_iter()
-                .filter_map(|e| e.ok())
-                .filter(|e| e.file_type().is_file())
-                .map(|e| e.into_path())
-                .collect();
-            files.sort();
-            for p in files {
-                let rel = p.strip_prefix(&dest).unwrap();
-                h.update(rel.to_string_lossy().as_bytes());
-                h.update(fs::read(&p).unwrap());
-            }
-            format!("sha256:{:x}", h.finalize())
+            digest_dir(&dest)
         })
         .collect();
 
@@ -214,20 +188,7 @@ fn upgrade_rolls_back_when_apply_fails_mid_loop() {
         .iter()
         .map(|(name, _, _, _)| {
             let dest = project.join("skills").join(name);
-            let mut h = sha2::Sha256::new();
-            let mut files: Vec<_> = walkdir::WalkDir::new(&dest)
-                .into_iter()
-                .filter_map(|e| e.ok())
-                .filter(|e| e.file_type().is_file())
-                .map(|e| e.into_path())
-                .collect();
-            files.sort();
-            for p in files {
-                let rel = p.strip_prefix(&dest).unwrap();
-                h.update(rel.to_string_lossy().as_bytes());
-                h.update(fs::read(&p).unwrap());
-            }
-            format!("sha256:{:x}", h.finalize())
+            digest_dir(&dest)
         })
         .collect();
     assert_eq!(pre_digests, post_digests);
@@ -328,23 +289,7 @@ fn upgrade_rolls_back_when_copy_fails_in_swap() {
             .success();
         assert!(ok);
         let _ = arch.wait();
-        let digest = {
-            use sha2::{Digest, Sha256};
-            let mut h = Sha256::new();
-            let mut files: Vec<_> = walkdir::WalkDir::new(&dest)
-                .into_iter()
-                .filter_map(|e| e.ok())
-                .filter(|e| e.file_type().is_file())
-                .map(|e| e.into_path())
-                .collect();
-            files.sort();
-            for p in files {
-                let rel = p.strip_prefix(&dest).unwrap();
-                h.update(rel.to_string_lossy().as_bytes());
-                h.update(fs::read(&p).unwrap());
-            }
-            format!("sha256:{:x}", h.finalize())
-        };
+        let digest = digest_dir(&dest);
         entries.push((format!("s{i}"), repo.to_string(), v1, digest));
     }
     let lock = serde_json::json!({

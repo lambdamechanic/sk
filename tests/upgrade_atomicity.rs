@@ -28,22 +28,7 @@ fn write(path: &Path, contents: &str) {
 }
 
 fn digest_dir(dir: &Path) -> String {
-    use sha2::{Digest, Sha256};
-    let mut hasher = Sha256::new();
-    let mut files: Vec<PathBuf> = walkdir::WalkDir::new(dir)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_file())
-        .map(|e| e.into_path())
-        .collect();
-    files.sort();
-    for path in files {
-        let rel = path.strip_prefix(dir).unwrap_or(&path);
-        hasher.update(rel.to_string_lossy().as_bytes());
-        let data = fs::read(&path).unwrap();
-        hasher.update(&data);
-    }
-    format!("sha256:{:x}", hasher.finalize())
+    sk::digest::digest_dir(dir).expect("compute digest")
 }
 
 fn init_skill_repo(root: &Path, name: &str, skill_path: &str) -> (PathBuf, String, String) {
