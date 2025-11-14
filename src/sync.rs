@@ -460,7 +460,7 @@ fn automate_pr_flow(
         }
         AutoMergeOutcome::Skipped(reason) => {
             println!("Auto-merge skipped for {} ({reason}).", pr.url);
-            if let Some(tip) = auto_merge_tip(&reason, spec) {
+            if let Some(tip) = auto_merge_tip(reason, spec) {
                 println!("{tip}");
             }
         }
