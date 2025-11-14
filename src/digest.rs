@@ -1,5 +1,6 @@
 use anyhow::Result;
 use sha2::{Digest as _, Sha256};
+use std::borrow::Cow;
 use std::fs;
 use std::path::Path;
 use walkdir::WalkDir;
@@ -18,7 +19,8 @@ pub fn digest_dir(dir: &Path) -> Result<String> {
         let rel = path.strip_prefix(dir).unwrap_or(&path);
         hasher.update(rel.to_string_lossy().as_bytes());
         let data = fs::read(&path)?;
-        hasher.update(&data);
+        let normalized = normalize_crlf(&data);
+        hasher.update(&normalized);
     }
     let hex = format!("sha256:{:x}", hasher.finalize());
     Ok(hex)
@@ -27,4 +29,30 @@ pub fn digest_dir(dir: &Path) -> Result<String> {
 fn should_ignore(p: &Path) -> bool {
     let name = p.file_name().and_then(|s| s.to_str()).unwrap_or("");
     name == ".DS_Store" || name.ends_with("~") || name.ends_with(".swp") || name == ".git"
+}
+
+fn normalize_crlf(input: &[u8]) -> Cow<'_, [u8]> {
+    if looks_binary(input) || !contains_crlf(input) {
+        return Cow::Borrowed(input);
+    }
+    let mut out = Vec::with_capacity(input.len());
+    let mut idx = 0;
+    while idx < input.len() {
+        if idx + 1 < input.len() && input[idx] == b'\r' && input[idx + 1] == b'\n' {
+            out.push(b'\n');
+            idx += 2;
+        } else {
+            out.push(input[idx]);
+            idx += 1;
+        }
+    }
+    Cow::Owned(out)
+}
+
+fn looks_binary(data: &[u8]) -> bool {
+    data.contains(&0)
+}
+
+fn contains_crlf(data: &[u8]) -> bool {
+    data.windows(2).any(|w| matches!(w, b"\r\n"))
 }

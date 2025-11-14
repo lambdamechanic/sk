@@ -366,7 +366,8 @@ fn sync_back_refreshes_local_digest_to_merged_commit() {
     let local_file = fs::read_to_string(skill_dir.join("file.txt")).unwrap();
     let remote_file = fs::read_to_string(remote_skill_dir.join("file.txt")).unwrap();
     assert_eq!(
-        local_file, remote_file,
+        normalize_newlines(&local_file),
+        normalize_newlines(&remote_file),
         "local install should match upstream merged contents"
     );
 
