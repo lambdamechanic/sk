@@ -119,7 +119,7 @@ sk precommit                 # fails if skills.lock.json references file:// or l
 sk precommit --allow-local   # warn-only (useful for experimentation)
 ```
 
-> ✅ These Quickstart commands stay honest via `tests/quickstart.rs` (`cargo test quickstart_readme_flow`), which (outside CI) clones the real `anthropics/skills` repo from GitHub and drives the same flow end-to-end (using a fake `gh` binary for PR automation and skipping only the “push upstream” step because CI lacks write access).
+> ✅ These Quickstart commands stay honest via `tests/quickstart.rs` (`cargo test quickstart_readme_flow`), which runs automatically whenever `CI=1` (e.g., on GitHub Actions). The test clones the real `anthropics/skills` repo, drives the workflow end-to-end with a fake `gh` binary, and skips only the “push upstream” step because CI lacks write access. To run it locally, export `CI=1`.
 
 ## Dependencies
 - **Rust (stable channel) + Cargo** — required for `cargo install sk` and to build from source (`rust-toolchain.toml` pins `stable` with `clippy`/`rustfmt`).

@@ -7,8 +7,8 @@ use support::{CliFixture, FakeGh};
 
 #[test]
 fn quickstart_readme_flow() {
-    if env::var_os("CI").is_some() {
-        eprintln!("skipping quickstart_readme_flow on CI (network-gated)");
+    if env::var_os("CI").is_none() {
+        println!("skipping quickstart_readme_flow (set CI=1 to run)");
         return;
     }
     let fx = CliFixture::new();
