@@ -72,6 +72,7 @@ What happens:
 - Always run `bd update` / `bd close` so `.beads/issues.jsonl` matches any skill changes.
 - Never edit `skills.lock.json` by hand. Let `sk install`, `sk upgrade`, or `sk remove` update it; commit the lockfile alongside the skill changes.
 - If `sk status` reports `dirty`, fix the local tree before running `sk upgrade` or `sk sync-back` to avoid partial syncs.
+- `sk upgrade --all` skips skills with local edits and prints reminders to `sk sync-back <name>`; treat that as a temporary state and clean them up promptly so future upgrades stay automatic.
 - When creating a new skill, always specify the upstream repo/path so `sk` can register it and refresh the lockfile automatically.
 - Use `sk precommit` (once implemented) to block local-only sources such as `file://` entries.
 

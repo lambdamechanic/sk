@@ -39,7 +39,7 @@ pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
 
     // Preflight: compute plan and detect modified without mutating
     let mut plan: Vec<(String, std::path::PathBuf, String)> = vec![]; // (install_name, dest, new_commit)
-    let mut any_modified = false;
+    let mut skipped_modified: Vec<(String, Option<(String, String)>)> = vec![];
     for skill in &targets {
         let dest = install_root.join(&skill.install_name);
         if !dest.exists() {
@@ -73,12 +73,22 @@ pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
         let rev = format!("refs/remotes/origin/{default}");
         let new_commit = git::rev_parse(&cache_dir, &rev)?;
 
-        if new_commit != skill.commit {
-            plan.push((skill.install_name.clone(), dest.clone(), new_commit));
-        }
+        let needs_upgrade = new_commit != skill.commit;
 
         if is_modified {
-            any_modified = true;
+            if all {
+                let span = needs_upgrade.then(|| (skill.commit.clone(), new_commit.clone()));
+                skipped_modified.push((skill.install_name.clone(), span));
+                continue;
+            } else {
+                bail!(
+                    "Local edits detected. Refusing to upgrade. Run 'sk sync-back <name>' or revert changes."
+                );
+            }
+        }
+
+        if needs_upgrade {
+            plan.push((skill.install_name.clone(), dest.clone(), new_commit));
         }
     }
 
@@ -88,11 +98,17 @@ pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
                 println!("{}: {} -> {}", name, &s.commit[..7], &new_commit[..7]);
             }
         }
+        if all {
+            print_skipped(&skipped_modified);
+        }
         return Ok(());
     }
 
-    if any_modified {
-        bail!("Local edits detected. Refusing to upgrade. Run 'sk sync-back <name>' or revert changes.");
+    if plan.is_empty() {
+        if all {
+            print_skipped(&skipped_modified);
+        }
+        return Ok(());
     }
 
     // Stage all planned changes into a temp dir; only after all succeed, atomically swap in
@@ -269,10 +285,6 @@ pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
         Ok(())
     }
 
-    if args.dry_run {
-        return Ok(());
-    }
-
     // Persist lockfile updates (and optional ref override)
     for (name, new_commit, new_digest) in &updates {
         if let Some(entry) = lf.skills.iter_mut().find(|s| s.install_name == *name) {
@@ -280,13 +292,38 @@ pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
             entry.digest = new_digest.clone();
         }
     }
-    // Apply ref override even if commit unchanged
-    if updates.is_empty() {
-        println!("Nothing to upgrade.");
-        return Ok(());
-    }
     lf.generated_at = Utc::now().to_rfc3339();
     crate::lock::save_lockfile(&lock_path, &lf)?;
+    if all {
+        print_skipped(&skipped_modified);
+    }
     println!("Upgrade complete.");
     Ok(())
+}
+
+fn print_skipped(skipped: &[(String, Option<(String, String)>)]) {
+    if skipped.is_empty() {
+        return;
+    }
+    println!("Skipped {} skill(s) with local edits:", skipped.len());
+    for (name, span) in skipped {
+        match span {
+            Some((old, new)) => println!(
+                "- {name}: local edits plus upstream update ({} -> {}). Run 'sk sync-back {name}' or revert changes, then rerun 'sk upgrade {name}'.",
+                short_sha(old),
+                short_sha(new)
+            ),
+            None => println!(
+                "- {name}: local edits (already at locked commit). Run 'sk sync-back {name}' or revert changes before upgrading."
+            ),
+        }
+    }
+}
+
+fn short_sha(full: &str) -> &str {
+    if full.len() > 7 {
+        &full[..7]
+    } else {
+        full
+    }
 }

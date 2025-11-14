@@ -134,9 +134,7 @@ sk config get|set <key> [value]  # per-user config (~/.config/sk/config.json)
 
 * For each target skill:
 
-  * If **modified** (digest mismatch) → **abort** with message:
-
-    > Local edits in `skills/<name>`. Refusing to upgrade. Fork the source and repoint, or use `sk sync-back <name>` if you have push access.
+  * If **modified** (digest mismatch) → **abort** with message when upgrading a specific skill. When running `sk upgrade --all`, modified installs are reported and skipped so the clean ones can continue.
   * Determine target commit:
 
 * Always use the cache’s **default branch** tip as the candidate commit.
