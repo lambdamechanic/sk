@@ -7,6 +7,7 @@ pub mod install;
 pub mod lock;
 pub mod paths;
 pub mod remove;
+pub mod repo;
 pub mod skills;
 pub mod template;
 pub mod update;

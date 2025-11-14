@@ -8,6 +8,7 @@ mod lock;
 mod paths;
 mod precommit;
 mod remove;
+mod repo;
 mod skills;
 mod sync;
 mod template;
@@ -17,7 +18,7 @@ mod upgrade;
 use anyhow::{Context, Result};
 use clap::Parser;
 
-use crate::cli::{Cli, Commands, ConfigCmd, TemplateCmd};
+use crate::cli::{Cli, Commands, ConfigCmd, RepoCmd, TemplateCmd};
 use serde::Serialize;
 
 fn main() -> Result<()> {
@@ -70,6 +71,7 @@ fn main() -> Result<()> {
         Commands::Doctor { apply } => doctor::run_doctor(apply),
         Commands::Config { cmd } => cmd_config(cmd),
         Commands::Template { cmd } => cmd_template(cmd),
+        Commands::Repo { cmd } => cmd_repo(cmd),
         Commands::Precommit { allow_local } => precommit::run_precommit(allow_local),
         Commands::Install {
             repo,
@@ -99,6 +101,40 @@ fn cmd_template(cmd: TemplateCmd) -> Result<()> {
             name: &name,
             description: &description,
             root: root.as_deref(),
+        }),
+    }
+}
+
+fn cmd_repo(cmd: RepoCmd) -> Result<()> {
+    match cmd {
+        RepoCmd::Add { repo, alias, https } => repo::run_repo_add(repo::RepoAddArgs {
+            repo: &repo,
+            alias: alias.as_deref(),
+            https,
+        }),
+        RepoCmd::List { json } => repo::run_repo_list(repo::RepoListArgs { json }),
+        RepoCmd::Catalog {
+            target,
+            https,
+            json,
+        } => repo::run_repo_catalog(repo::RepoCatalogArgs {
+            target: &target,
+            https,
+            json,
+        }),
+        RepoCmd::Search {
+            query,
+            repo: target,
+            https,
+            json,
+        } => repo::run_repo_search(repo::RepoSearchArgs {
+            query: &query,
+            target: target.as_deref(),
+            https,
+            json,
+        }),
+    }
+}
         }),
     }
 }
