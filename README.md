@@ -30,6 +30,7 @@ Example `sk repo list` output:
 ALIAS       REPO                                SKILLS  INSTALLED
 anthropic   github.com/anthropics/skills        120     3
 ```
+`*` next to the SKILLS column means the remote could not be refreshed and the counts are from the last cached fetch.
 
 ### 3. Install a few skills
 ```bash
@@ -139,4 +140,3 @@ cargo clippy --all-targets --all-features
 | `sk config get|set <key> [value]` | View or tweak defaults like install root, protocol, host, GitHub username. |
 
 That’s it—`sk` keeps your Claude Skills reproducible, reviewable, and easy to upstream. Let us know what other workflows you need!
-
