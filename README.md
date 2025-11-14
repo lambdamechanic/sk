@@ -1,10 +1,10 @@
 # sk — repo-scoped Claude Skills bridge for any agent
 
-`sk` keeps Claude Skills vendored inside your Git repository so Codex, bespoke LLM runners, and CI can all reuse the same helpers. 
+`sk` keeps Claude Skills vendored inside your Git repository so agents other than Claude can reuse the same directives. 
 
 ## Why sk?
 - Vendored helpers travel with your git history, so reviewers and automation see the exact bits you edited.
-- Works for any agent runtime—if it can run `sk`, it can share your Claude Skills.
+- Works for any agent.
 - Publishing edits is just another PR via `sk sync-back`, so nothing drifts out of band.
 
 ## Quickstart: install → cache Anthropic → publish your own
