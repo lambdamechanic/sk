@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -17,8 +17,9 @@ pub struct LockSkill {
     #[serde(rename = "installName")]
     pub install_name: String,
     pub source: Source,
-    #[serde(rename = "ref")]
-    pub ref_: Option<String>,
+    #[allow(dead_code)]
+    #[serde(default, rename = "ref", skip_serializing)]
+    pub legacy_ref: Option<String>,
     pub commit: String,
     pub digest: String,
     #[serde(rename = "installedAt")]
@@ -41,6 +42,32 @@ impl Lockfile {
             version: 1,
             skills: vec![],
             generated_at: Utc::now().to_rfc3339(),
+        }
+    }
+
+    pub fn assert_no_legacy_refs(&self) -> Result<()> {
+        if let Some(entry) = self.skills.iter().find(|s| s.legacy_ref.is_some()) {
+            bail!(
+                "skills.lock.json still contains \"ref\" for install '{}'. The field is obsolete—remove the \"ref\" key (or reinstall the skill) and re-run sk.",
+                entry.install_name
+            );
+        }
+        Ok(())
+    }
+
+    pub fn load(path: &Path) -> Result<Self> {
+        let data = fs::read(path).with_context(|| format!("reading {}", path.display()))?;
+        let lf: Lockfile =
+            serde_json::from_slice(&data).with_context(|| format!("parsing {}", path.display()))?;
+        lf.assert_no_legacy_refs()?;
+        Ok(lf)
+    }
+
+    pub fn load_or_empty(path: &Path) -> Result<Self> {
+        if path.exists() {
+            Self::load(path)
+        } else {
+            Ok(Self::empty_now())
         }
     }
 }

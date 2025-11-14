@@ -227,7 +227,6 @@ proptest! {
             "skills": entries.iter().map(|(name, repo, skill_path, v1, digest, url)| serde_json::json!({
                 "installName": name,
                 "source": {"url":url,"host":host,"owner":owner,"repo":repo,"skillPath": skill_path},
-                "ref": null,
                 "commit": v1,
                 "digest": digest,
                 "installedAt": "1970-01-01T00:00:00Z"

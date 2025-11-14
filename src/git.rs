@@ -220,28 +220,6 @@ pub fn rev_parse(cache_dir: &Path, rev: &str) -> Result<String> {
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
-pub fn remote_branch_tip(cache_dir: &Path, branch: &str) -> Result<Option<String>> {
-    // Check if refs/remotes/origin/<branch> exists
-    let full = format!("refs/remotes/origin/{branch}");
-    let out = Command::new("git")
-        .args([
-            "-C",
-            &cache_dir.to_string_lossy(),
-            "show-ref",
-            "--verify",
-            &full,
-        ])
-        .output()
-        .context("git show-ref failed")?;
-    if !out.status.success() {
-        return Ok(None);
-    }
-    // First field is SHA
-    let s = String::from_utf8_lossy(&out.stdout);
-    let sha = s.split_whitespace().next().unwrap_or("").to_string();
-    Ok(if sha.is_empty() { None } else { Some(sha) })
-}
-
 pub fn has_object(cache_dir: &Path, oid: &str) -> Result<bool> {
     let out = Command::new("git")
         .args(["-C", &cache_dir.to_string_lossy(), "cat-file", "-t", oid])

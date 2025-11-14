@@ -79,12 +79,72 @@ pub fn parse_skill_frontmatter_str(text: &str) -> Result<SkillMeta> {
         .get(1)
         .map(|m| m.as_str())
         .context("empty YAML front-matter")?;
-    let meta = serde_yaml::from_str::<SkillMeta>(yaml)
-        .context("unable to parse SKILL front-matter as YAML")?;
-    Ok(meta)
+    match serde_yaml::from_str::<SkillMeta>(yaml) {
+        Ok(meta) => Ok(meta),
+        Err(err) => {
+            if let Some(meta) = parse_frontmatter_kv_lines(yaml) {
+                return Ok(meta);
+            }
+            Err(err).context("unable to parse SKILL front-matter as YAML")?
+        }
+    }
+}
+
+fn parse_frontmatter_kv_lines(src: &str) -> Option<SkillMeta> {
+    let mut name: Option<String> = None;
+    let mut description: Option<String> = None;
+    for raw_line in src.lines() {
+        let line = raw_line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let Some((key, value)) = line.split_once(':') else {
+            continue;
+        };
+        let key = key.trim();
+        let value = value.trim().trim_matches(['"', '\'']);
+        match key {
+            "name" => {
+                if name.is_none() && !value.is_empty() {
+                    name = Some(value.to_string());
+                }
+            }
+            "description" => {
+                if description.is_none() && !value.is_empty() {
+                    description = Some(value.to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+    match (name, description) {
+        (Some(name), Some(description)) => Some(SkillMeta { name, description }),
+        _ => None,
+    }
 }
 
 pub fn parse_frontmatter_file(path: &Path) -> Result<SkillMeta> {
     let data = fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
     parse_skill_frontmatter_str(&data).context("invalid or missing SKILL.md front-matter")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_standard_yaml_frontmatter() {
+        let text = "---\nname: demo\ndescription: something\n---\nbody";
+        let meta = parse_skill_frontmatter_str(text).unwrap();
+        assert_eq!(meta.name, "demo");
+        assert_eq!(meta.description, "something");
+    }
+
+    #[test]
+    fn parses_plain_key_value_with_colon_in_value() {
+        let text = "---\nname: starting-the-task\ndescription: A short checklist: plan, branch, test.\n---\nbody";
+        let meta = parse_skill_frontmatter_str(text).unwrap();
+        assert_eq!(meta.name, "starting-the-task");
+        assert_eq!(meta.description, "A short checklist: plan, branch, test.");
+    }
 }

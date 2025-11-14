@@ -1,5 +1,4 @@
 use std::fs;
-use std::process::Command;
 
 #[path = "support/mod.rs"]
 mod support;
@@ -7,25 +6,35 @@ mod support;
 use support::{git, normalize_newlines, CliFixture};
 
 #[test]
-fn sync_back_pushes_branch_with_local_edits() {
+fn sync_back_publishes_new_skill_with_repo_override() {
     let fx = CliFixture::new();
     fx.sk_success(&["init"]);
 
-    let remote = fx.create_remote("repo-sync", "skills/sample", "sample");
-    fx.install_from_remote(&remote, "sample");
+    let remote = fx.create_remote("skills-upstream", "template", "template-skill");
 
-    let skill_dir = fx.skill_dir("sample");
-    fs::write(skill_dir.join("file.txt"), "local edit\n").unwrap();
+    let skill_dir = fx.skill_dir("sk");
+    fs::create_dir_all(&skill_dir).unwrap();
+    fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: sk\ndescription: repo-scoped CLI skill\n---\n",
+    )
+    .unwrap();
+    fs::write(skill_dir.join("README.md"), "local content\n").unwrap();
 
-    let mut cmd = fx.sk_cmd();
-    let out = cmd
+    let repo_url = remote.file_url();
+    let out = fx
+        .sk_cmd()
         .args([
             "sync-back",
-            "sample",
+            "sk",
+            "--repo",
+            &repo_url,
+            "--skill-path",
+            "sk",
             "--branch",
-            "sync/test",
+            "sk/new-skill",
             "--message",
-            "sync test",
+            "Add sk skill from fixture",
         ])
         .output()
         .unwrap();
@@ -36,23 +45,19 @@ fn sync_back_pushes_branch_with_local_edits() {
     );
 
     git(&["fetch", "origin"], &remote.work);
-    git(&["checkout", "sync/test"], &remote.work);
-    let synced =
-        fs::read_to_string(remote.work.join(remote.skill_path()).join("file.txt")).unwrap();
-    assert_eq!(normalize_newlines(&synced), "local edit\n");
+    git(&["checkout", "sk/new-skill"], &remote.work);
+    let pushed = fs::read_to_string(remote.work.join("sk").join("README.md")).unwrap();
+    assert_eq!(normalize_newlines(&pushed), "local content\n");
 
-    let log = Command::new("git")
-        .args([
-            "-C",
-            remote.work.to_str().unwrap(),
-            "log",
-            "-1",
-            "--pretty=%s",
-        ])
-        .output()
-        .unwrap();
+    let lock = fx.lock_json();
+    let skills = lock
+        .get("skills")
+        .and_then(|v| v.as_array())
+        .expect("lockfile skills");
     assert!(
-        String::from_utf8_lossy(&log.stdout).contains("sync test"),
-        "commit message propagated"
+        skills
+            .iter()
+            .any(|entry| entry.get("installName") == Some(&"sk".into())),
+        "lockfile should include new skill entry"
     );
 }

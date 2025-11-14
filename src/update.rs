@@ -1,5 +1,5 @@
 use crate::{git, lock, paths};
-use anyhow::{Context, Result};
+use anyhow::Result;
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
@@ -13,10 +13,7 @@ pub fn run_update() -> Result<()> {
         );
         return Ok(());
     }
-    let data =
-        std::fs::read(&lock_path).with_context(|| format!("reading {}", lock_path.display()))?;
-    let lf: lock::Lockfile = serde_json::from_slice(&data)
-        .with_context(|| format!("parsing {}", lock_path.display()))?;
+    let lf = lock::Lockfile::load(&lock_path)?;
     // gather unique repos by host/owner/repo/url
     let mut uniq = BTreeSet::new();
     for s in lf.skills {

@@ -1,7 +1,6 @@
 use crate::{git, lock};
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Result};
 use gix_url as gurl;
-use std::fs;
 
 pub fn run_precommit(allow_local: bool) -> Result<()> {
     let project_root = git::ensure_git_repo()?;
@@ -10,8 +9,7 @@ pub fn run_precommit(allow_local: bool) -> Result<()> {
         // No lockfile; nothing to check.
         return Ok(());
     }
-    let data = fs::read(&lock_path).with_context(|| format!("reading {}", lock_path.display()))?;
-    let lf: lock::Lockfile = serde_json::from_slice(&data).context("parse lockfile")?;
+    let lf = lock::Lockfile::load(&lock_path)?;
 
     let mut local_entries: Vec<String> = vec![];
     for s in &lf.skills {

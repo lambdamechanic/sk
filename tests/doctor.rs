@@ -51,7 +51,6 @@ fn doctor_reports_duplicate_install_names() {
         "repo": "r0",
         "skillPath": "skill-0"
       },
-      "ref": null,
       "commit": "deadbeef",
       "digest": "abc",
       "installedAt": "2020-01-01T00:00:00Z"
@@ -65,7 +64,6 @@ fn doctor_reports_duplicate_install_names() {
         "repo": "r1",
         "skillPath": "skill-1"
       },
-      "ref": null,
       "commit": "cafebabe",
       "digest": "def",
       "installedAt": "2020-01-01T00:00:00Z"
@@ -100,7 +98,6 @@ fn doctor_prunes_unreferenced_cache_with_apply() {
         "repo": "r1",
         "skillPath": "skill-1"
       },
-      "ref": null,
       "commit": "cafebabe",
       "digest": "def",
       "installedAt": "2020-01-01T00:00:00Z"
@@ -145,7 +142,6 @@ fn doctor_drops_orphan_lock_entries_and_normalizes_lockfile() {
         "repo": "r2",
         "skillPath": "skill-2"
       },
-      "ref": null,
       "commit": "1111111",
       "digest": "zzz",
       "installedAt": "2020-01-01T00:00:00Z"
@@ -159,7 +155,6 @@ fn doctor_drops_orphan_lock_entries_and_normalizes_lockfile() {
         "repo": "r3",
         "skillPath": "skill-3"
       },
-      "ref": null,
       "commit": "2222222",
       "digest": "yyy",
       "installedAt": "2020-01-01T00:00:00Z"
@@ -204,7 +199,6 @@ fn doctor_reports_missing_skill_md() {
         "repo": "r4",
         "skillPath": "skill-4"
       }},
-      "ref": null,
       "commit": "3333333",
       "digest": "{digest}",
       "installedAt": "2020-01-01T00:00:00Z"
@@ -247,7 +241,6 @@ fn doctor_reports_invalid_skill_frontmatter() {
         "repo": "r5",
         "skillPath": "skill-5"
       }},
-      "ref": null,
       "commit": "4444444",
       "digest": "{digest}",
       "installedAt": "2020-01-01T00:00:00Z"

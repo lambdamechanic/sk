@@ -19,8 +19,7 @@ pub fn run_remove(args: RemoveArgs) -> Result<()> {
     if !lock_path.exists() {
         bail!("no lockfile found");
     }
-    let data = fs::read(&lock_path)?;
-    let mut lf: lock::Lockfile = serde_json::from_slice(&data).context("parse lockfile")?;
+    let mut lf = lock::Lockfile::load(&lock_path)?;
 
     let idx = lf
         .skills

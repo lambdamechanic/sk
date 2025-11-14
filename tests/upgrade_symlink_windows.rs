@@ -159,7 +159,7 @@ fn upgrade_preserves_directory_symlink_windows() {
         }
         format!("sha256:{:x}", h.finalize())
     };
-    let lock = serde_json::json!({"version":1,"skills":[{"installName":"s0","source":{"url":file_url,"host":"local","owner":"o","repo":"r0","skillPath":"skill"},"ref": null,"commit": head,"digest": digest_v1,"installedAt":"1970-01-01T00:00:00Z"}],"generatedAt":"1970-01-01T00:00:00Z"});
+    let lock = serde_json::json!({"version":1,"skills":[{"installName":"s0","source":{"url":file_url,"host":"local","owner":"o","repo":"r0","skillPath":"skill"},"commit": head,"digest": digest_v1,"installedAt":"1970-01-01T00:00:00Z"}],"generatedAt":"1970-01-01T00:00:00Z"});
     fs::write(
         project.join("skills.lock.json"),
         serde_json::to_string_pretty(&lock).unwrap(),
