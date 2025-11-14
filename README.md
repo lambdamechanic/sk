@@ -1,14 +1,10 @@
-# sk — repo-scoped Claude Skills manager
+# sk — repo-scoped Claude Skills bridge for any agent
 
-`sk` keeps Claude Skills vendored *inside* your Git repository so teammates, CI, and downstream consumers all get the exact same set of helper skills. It clones remote skill repos into a per-user cache, copies selected skills into `./skills/<name>`, pins them in `skills.lock.json`, and gives you tooling to inspect, upgrade, and publish edits without leaving your repo.
+`sk` lets Codex, bespoke LLM runners, and every non-Claude agent reuse the same Claude Skills you already trust. It keeps those skills vendored *inside* your Git repository so reviewers, CI, and downstream consumers get the exact same helper set. Behind the scenes `sk` clones remote skill repos into a per-user cache, copies selected skills into `./skills/<name>`, pins them in `skills.lock.json`, and gives you tooling to inspect, upgrade, and publish edits without leaving your repo.
 
 ## Why you might want it
-- Install skills from the default Anthropic catalog (`@anthropics/skills`) or from any git remote/path (SSH, HTTPS, `file://`, GitHub shorthand).
-- Keep a project-local lockfile so skills travel with the repo—no hidden global state.
-- Detect drift with `sk status`, `sk check`, and `sk doctor`.
-- Use `sk sync-back` to push local edits (or entirely new skills) back to the source repo, automatically opening a PR via `gh` when possible.
-- Cache fetches with `sk update` and apply upgrades with `sk upgrade --dry-run|--all`.
-- Guard CI with `sk precommit` to block unreproducible `file://` sources.
+- Make Claude Skills available in an agent-agnostic way so Codex and every other automation surface share the same vetted helpers.
+- Share, update, and version those skills like code—Git history, reviews, and CI catch drift automatically.
 
 ## Quickstart: install → fetch Anthropic skills → publish your own
 `sk` is published on crates.io—install it once and then keep everything repo-scoped.
@@ -16,8 +12,6 @@
 ### 0. Install `sk` (one-time)
 ```bash
 cargo install sk
-# later upgrades
-cargo install sk --force
 ```
 
 ### 1. Initialize inside your repo
@@ -25,6 +19,7 @@ cargo install sk --force
 cd /path/to/your/git/repo
 sk init                      # creates ./skills and skills.lock.json if missing
 sk config set default_root ./skills   # optional: persist the root
+sk config set default_repo @your-gh-username/claude-skills  # optional: default sync-back repo
 ```
 Commit both `skills/` contents and `skills.lock.json`.
 
@@ -35,39 +30,30 @@ sk install @anthropics/skills template-skill --alias template
 sk install @anthropics/skills frontend-design
 sk install @anthropics/skills artifacts-builder
 sk list
-sk status template frontend-design artifacts-builder
 ```
 
 ### 3. Create your own upstream repo with `gh`
 Use the GitHub CLI (already required for `sk sync-back`) to host skills you author:
 ```bash
 gh repo create your-gh-username/claude-skills --private --clone
-# or, inside the clone:
-gh repo create your-gh-username/claude-skills --private --add-readme
 ```
-Point `sk` at that repo when installing or publishing new skills. For example, scaffold a local skill directory, then use `sync-back` to push it to your brand-new repo:
+Set it as the default publish target once so `sk sync-back` knows where to push brand-new skills:
 ```bash
-mkdir -p skills/retro-template
-cat > skills/retro-template/SKILL.md <<'EOF'
----
-name: retro-template
-description: My retro template skill
----
-EOF
-
-sk sync-back retro-template \
-  --repo @your-gh-username/claude-skills \
-  --skill-path retro-template
+sk config set default_repo @your-gh-username/claude-skills
 ```
-`sk` mirrors your local edits into the cached clone, pushes a branch to `github.com:your-gh-username/claude-skills.git`, and opens/auto-merges a PR via `gh`.
 
-### 4. Inspect edits with `sk status` and `sk doctor`
-`sk status` recomputes digests and shows pending upstream updates:
+### 4. Scaffold a new skill with `sk template`
+`sk template create <skill-name> "<description>"` copies the canonical template into `skills/<skill-name>`, rewrites the YAML metadata, and adds stub prompt/test files so every agent sees the same structure.
 ```bash
-sk status
-# frontend-design    modified    3a1b7c2 -> 8dd55a1
+sk template create retro-template "Retro two-column recap template"
 ```
-`sk doctor` digs deeper (duplicates, missing caches, digest drift) and ties findings to the right follow-up command:
+Behavior:
+1. The base template comes from `sk config get template_source` (defaults to `@anthropics/skills template-skill`). Change it with `sk config set template_source <repo>/<skill>`.
+2. The install root defaults to `./skills` (or your `default_root`). Override once via `sk config set default_root ./some/other/dir`.
+3. After the files land in `skills/retro-template`, run `sk doctor retro-template`, add prompts/tests, then publish with `sk sync-back retro-template`.
+
+### 5. Inspect edits with `sk doctor`
+`sk doctor` recomputes digests, shows pending upstream updates, and ties findings to the right follow-up command:
 ```bash
 sk doctor
 == frontend-design ==
@@ -76,35 +62,27 @@ sk doctor
 ```
 Add `--apply` to rebuild missing installs from the cached commit, drop orphaned lock entries, and prune unused cache clones.
 
-### 5. Push updates for an installed skill (`sk sync-back`)
+### 6. Push updates for an installed skill (`sk sync-back`)
 After editing files under `skills/<name>`:
 ```bash
-sk sync-back frontend-design \
-  --repo @your-gh-username/claude-skills \
-  --skill-path frontend-design \
-  --branch sk/sync/frontend-$(date +%Y%m%d-%H%M) \
-  --message "Revise guidance tone"
+sk sync-back frontend-design -m "Revise guidance tone"
 ```
 What happens:
-1. The installed directory is mirrored into a clean worktree of the cached repo (via `rsync` when available).
-2. `sk` commits, pushes `branch` (default `sk/sync/<name>/<timestamp>`), then calls `gh pr list|create|merge`. If required checks pass and the repo has Auto-merge enabled, the PR is armed automatically; conflicts are surfaced with the PR URL.
+1. The installed directory is mirrored into a clean worktree of the cached repo under `~/.cache/sk/repos/...` (using `rsync -a --delete` when available, otherwise falling back to a recursive copy).
+2. `sk` commits, pushes to the repo recorded in `skills.lock.json` (typically wherever you originally installed the skill). For brand-new skills (Step 7), it falls back to `sk config get default_repo`. Branch names default to `sk/sync/<name>/<timestamp>`, and `gh pr list|create|merge` wires up the PR. If required checks pass and the repo has Auto-merge enabled, the PR is armed automatically; conflicts are surfaced with the PR URL.
 3. `skills.lock.json` is updated to point at the new commit and digest so teammates pull the new content immediately.
 
-Without `gh`, you’ll see “Skipping PR automation: 'gh' CLI not found” and must open/merge the PR yourself.
-> Note: this step requires push access to the skill’s source repo (typically your fork). If you only plan to publish brand-new skills, skip straight to Step 6.
+Missing `rsync` or `gh` is not fatal—`sk` prints a warning, keeps going, and simply asks you to open the PR manually if `gh` is unavailable.
+> Note: this step requires push access to the skill’s source repo (typically your fork). If you only plan to publish brand-new skills, skip straight to Step 7.
 
-### 6. Publish a brand-new skill back upstream
-If a folder exists under `skills/` but isn’t in the lockfile yet (for example, you scaffolded `skills/retro-template` from scratch):
+### 7. Publish a brand-new skill back upstream
+If a folder exists under `skills/` but isn’t in the lockfile yet (for example, you just ran `sk template create retro-template`):
 ```bash
-# ensure SKILL.md front-matter names the skill "retro-template"
-sk sync-back retro-template \
-  --repo @your-gh-username/claude-skills \
-  --skill-path retro-template \
-  --branch sk/new/retro-template
+sk sync-back retro-template
 ```
-`--repo` is required for new installs so `sk` knows where to push. `--skill-path` defaults to the installed folder name, but you can target nested paths like `examples/retro-template`. The command pushes the branch, opens/merges a PR (via `gh`), and then *adds* the new entry to `skills.lock.json`.
+For folders that haven’t been synced before `sk` reads the target repo from `default_repo`, infers the on-disk path from the install name, and auto-generates the branch. Pass flags only when overriding defaults (for example, `--repo` if you need to publish to a different org). Once the PR merges, `skills.lock.json` gains the new entry so teammates pick it up on their next pull.
 
-### 7. Keep caches fresh and roll forward clean installs
+### 8. Keep caches fresh and roll forward clean installs
 ```bash
 sk update                    # fetch every repo referenced in the lockfile (cache-only)
 sk upgrade --dry-run         # show old -> new commits without touching the repo
@@ -113,7 +91,7 @@ sk remove <name>             # refuses if modified unless you pass --force
 ```
 `sk upgrade --all` skips modified installs and prints the commit span so you can decide whether to `sync-back` or revert.
 
-### 8. Guard CI with `sk precommit`
+### 9. Guard CI with `sk precommit`
 ```bash
 sk precommit                 # fails if skills.lock.json references file:// or localhost sources
 sk precommit --allow-local   # warn-only (useful for experimentation)
@@ -133,8 +111,6 @@ sk precommit --allow-local   # warn-only (useful for experimentation)
 ### From crates.io (recommended)
 ```bash
 cargo install sk
-# upgrade later
-cargo install sk --force
 ```
 
 ### From source (for contributors)
@@ -155,7 +131,7 @@ cargo clippy --all-targets --all-features
 - `skills/` — default install root (override via `sk init --root` or `sk config set default_root`).
 - `skills.lock.json` — versioned lockfile tracking each installed skill (`installName`, repo URL, commit, digest, install timestamp).
 - Cache clones live under `~/.cache/sk/repos/<host>/<owner>/<repo>` (override with `SK_CACHE_DIR`).
-- User config lives in `~/.config/sk/config.json` (override with `SK_CONFIG_DIR`). Keys: `default_root`, `protocol` (`ssh` or `https`), `default_host`, `github_user`.
+- User config lives in `~/.config/sk/config.json` (override with `SK_CONFIG_DIR`). Keys: `default_root`, `default_repo`, `template_source`, `protocol` (`ssh` or `https`), `default_host`, `github_user`.
 - Every skill subdirectory must contain `SKILL.md` with YAML front-matter that declares `name` and `description`.
 
 ## Command cheat sheet
@@ -165,20 +141,12 @@ cargo clippy --all-targets --all-features
 | `sk install <repo> <skill-name> [--path subdir] [--alias name]` | Copy a skill from a git repo into `skills/<alias>` and lock its commit/digest. |
 | `sk list` / `sk where <name>` | Inspect installed skill set or find the on-disk path. |
 | `sk check [name...] [--json]` | Quick OK/modified/missing status for installs. |
-| `sk status [name...] [--json]` | Compare digests plus show upstream tip (`old -> new`). |
 | `sk update` | Refresh cached repos (safe to run on CI). |
-| `sk upgrade <--all|name> [--dry-run]` | Copy newer commits into the repo and update the lockfile. |
-| `sk sync-back <name> [--branch ... --repo ... --skill-path ...]` | Push local edits (or new skills) back to the remote repo, optionally auto-opening a PR with `gh`. |
-| `sk doctor [--apply]` | Diagnose duplicates, missing caches, digest drift; with `--apply` rebuild installs, prune caches, drop orphaned lock entries. |
+| `sk upgrade [--all|<name>] [--dry-run]` | Copy newer commits into the repo and update the lockfile. |
+| `sk template create <name> "<description>"` | Scaffold a new skill from the configured template into `skills/<name>`. |
+| `sk sync-back <name> [-m "..."]` | Push local edits (or brand-new skills) to the configured repo and auto-open a PR with `gh`. |
+| `sk doctor [name...] [--apply]` | Diagnose duplicates, missing caches, digest drift; with `--apply` rebuild installs, prune caches, drop orphaned lock entries. |
 | `sk precommit [--allow-local]` | Enforce no local-only sources in `skills.lock.json` before committing. |
 | `sk config get|set <key> [value]` | View or tweak defaults like install root, protocol, host, GitHub username. |
-
-## Troubleshooting & tips
-- **Auth & protocols**: Default installs use SSH (`git@github.com:owner/repo.git`). Run `sk config set protocol https` to default to HTTPS, or pass `--https` per command.
-- **Cache hygiene**: `sk doctor --apply` prunes caches the project no longer references. Without `--apply`, it only reports.
-- **Missing tools**: If `rsync` isn’t installed, `sk sync-back` falls back to a recursive copy (slower, but works). Without `gh`, the command still pushes but prints a warning and skips PR automation.
-- **Environment overrides**: `SK_CACHE_DIR=/tmp/sk-cache` stores caches elsewhere; `SK_CONFIG_DIR` relocates user config (useful for CI sandboxes).
-- **Commit discipline**: Always commit `skills.lock.json` alongside skill directories so teammates reproduce the same commit + digest.
-- **Pre-release validation**: Run `sk update && sk upgrade --dry-run && sk doctor` before tagging a release to confirm caches, lockfile, and local edits are in sync.
 
 That’s it—`sk` keeps your Claude Skills reproducible, reviewable, and easy to upstream. Let us know what other workflows you need!

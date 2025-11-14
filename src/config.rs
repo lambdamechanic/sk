@@ -5,11 +5,14 @@ use std::fs;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct UserConfig {
     pub default_root: String, // e.g., "./skills"
     pub protocol: String,     // "ssh" | "https"
     pub default_host: String, // e.g., "github.com"
     pub github_user: String,
+    pub default_repo: String,
+    pub template_source: String,
 }
 
 impl Default for UserConfig {
@@ -19,8 +22,14 @@ impl Default for UserConfig {
             protocol: "ssh".to_string(),
             default_host: "github.com".to_string(),
             github_user: String::new(),
+            default_repo: String::new(),
+            template_source: default_template_source(),
         }
     }
+}
+
+fn default_template_source() -> String {
+    "@anthropics/skills template-skill".to_string()
 }
 
 pub fn config_dir() -> Result<PathBuf> {

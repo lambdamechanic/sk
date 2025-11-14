@@ -50,13 +50,14 @@ fn quickstart_readme_flow() {
     run(&["doctor"]);
 
     let personal_repo = fx.create_remote("user-claude-skills", ".", "seed");
+    run(&["config", "set", "default_repo", &personal_repo.file_url()]);
+    run(&[
+        "template",
+        "create",
+        "retro-template",
+        "Retro template quickstart skill",
+    ]);
     let retro_dir = fx.skill_dir("retro-template");
-    fs::create_dir_all(&retro_dir).unwrap();
-    fs::write(
-        retro_dir.join("SKILL.md"),
-        "---\nname: retro-template\ndescription: Retro template quickstart skill\n---\n",
-    )
-    .unwrap();
     fs::write(
         retro_dir.join("NOTES.md"),
         "Checklist outline for sprint retros.\n",
@@ -64,16 +65,7 @@ fn quickstart_readme_flow() {
     .unwrap();
 
     gh.clear_state();
-    run(&[
-        "sync-back",
-        "retro-template",
-        "--repo",
-        &personal_repo.file_url(),
-        "--skill-path",
-        "retro-template",
-        "--branch",
-        "sk/new/retro-template",
-    ]);
+    run(&["sync-back", "retro-template"]);
 
     // Confirm retro-template made it into the lockfile.
     let lock = fx.lock_json();
