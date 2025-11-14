@@ -7,19 +7,10 @@ use std::path::Path;
 use std::process::Command;
 use tempfile::tempdir;
 
-fn git(args: &[&str], cwd: &Path) {
-    let status = Command::new("git")
-        .args(args)
-        .current_dir(cwd)
-        .status()
-        .unwrap();
-    assert!(
-        status.success(),
-        "git {:?} failed in {}",
-        args,
-        cwd.display()
-    );
-}
+#[path = "support/mod.rs"]
+mod support;
+
+use support::{clone_into_cache, extract_subdir_from_commit, git, path_to_file_url};
 
 #[test]
 fn upgrade_preserves_symlinks() {
@@ -54,6 +45,16 @@ fn upgrade_preserves_symlinks() {
     git(&["add", "."], &work);
     git(&["commit", "-m", "v1"], &work);
     git(&["push", "-u", "origin", "main"], &work);
+    let v1 = String::from_utf8(
+        Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(&work)
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .unwrap();
+    let v1 = v1.trim().to_string();
     // v2: append to real.txt
     fs::OpenOptions::new()
         .append(true)
@@ -65,73 +66,12 @@ fn upgrade_preserves_symlinks() {
     git(&["commit", "-m", "v2"], &work);
     git(&["push", "origin", "main"], &work);
 
-    // Cache clone: hash-only for file://
-    fn path_to_file_url(p: &Path) -> String {
-        #[cfg(windows)]
-        {
-            let s = p.to_string_lossy().replace('\\', "/");
-            if s.len() >= 2 && s.as_bytes()[1] == b':' {
-                return format!("file:///{s}");
-            }
-            if s.starts_with("//") {
-                return format!("file:{s}");
-            }
-            if s.starts_with('/') {
-                return format!("file://{s}");
-            }
-            format!("file:///{s}")
-        }
-        #[cfg(not(windows))]
-        {
-            format!("file://{}", p.to_string_lossy())
-        }
-    }
-    fn hashed_leaf(url: &str, repo: &str) -> String {
-        use sha2::{Digest, Sha256};
-        let h = Sha256::digest(url.as_bytes());
-        let hex = format!("{h:x}");
-        let short = &hex[..12];
-        format!("{repo}-{short}")
-    }
     let file_url = path_to_file_url(&bare);
-    let cache = cache_root
-        .join("repos/local/o")
-        .join(hashed_leaf(&file_url, "r0"));
-    fs::create_dir_all(cache.parent().unwrap()).unwrap();
-    git(
-        &["clone", bare.to_str().unwrap(), cache.to_str().unwrap()],
-        cache.parent().unwrap(),
-    );
-    git(&["remote", "set-head", "origin", "-a"], &cache);
+    let cache = clone_into_cache(&cache_root, "local", "o", "r0", &bare, &file_url);
 
-    // Install v1 via archive
+    // Install v1 via cached archive
     let dest = project.join("skills/s0");
-    fs::create_dir_all(&dest).unwrap();
-    let mut archive = Command::new("git")
-        .args([
-            "-C",
-            cache.to_str().unwrap(),
-            "archive",
-            "--format=tar",
-            "HEAD~1",
-            "skill",
-        ])
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-        .unwrap();
-    let status = Command::new("tar")
-        .args([
-            "-x",
-            "--strip-components",
-            "1",
-            "-C",
-            dest.to_str().unwrap(),
-        ])
-        .stdin(archive.stdout.take().unwrap())
-        .status()
-        .unwrap();
-    assert!(status.success());
-    let _ = archive.wait();
+    extract_subdir_from_commit(&cache, &v1, "skill", &dest);
 
     // Build lock from installed digest
     let digest_v1 = {

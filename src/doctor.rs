@@ -4,6 +4,7 @@ use chrono::Utc;
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
+use walkdir::WalkDir;
 
 pub fn run_doctor(apply: bool) -> Result<()> {
     let project_root = git::ensure_git_repo()?;
@@ -36,6 +37,51 @@ pub fn run_doctor(apply: bool) -> Result<()> {
         )
     }
 
+    fn rebuild_missing_install(
+        cache_dir: &Path,
+        skill: &lock::LockSkill,
+        install_dir: &Path,
+        skill_messages: &mut Vec<String>,
+        orphans_to_drop: &mut HashSet<String>,
+    ) {
+        if cache_dir.exists() && git::has_object(cache_dir, &skill.commit).unwrap_or(false) {
+            match crate::install::extract_subdir_from_commit(
+                cache_dir,
+                &skill.commit,
+                skill.source.skill_path(),
+                install_dir,
+            ) {
+                Ok(_) => skill_messages.push("  Rebuilt from locked commit.".to_string()),
+                Err(e) => skill_messages.push(format!("  Rebuild failed: {e}")),
+            }
+        } else {
+            skill_messages.push("  Cannot rebuild: cache/commit missing.".to_string());
+            orphans_to_drop.insert(lock_entry_key(skill));
+        }
+    }
+
+    fn compute_upstream_update(
+        cache_dir: &Path,
+        spec: &git::RepoSpec,
+        current_commit: &str,
+    ) -> Option<String> {
+        if !cache_dir.exists() {
+            return None;
+        }
+        let branch = git::detect_or_set_default_branch(cache_dir, spec).ok()?;
+        let tip_ref = format!("refs/remotes/origin/{branch}");
+        let new_sha = git::rev_parse(cache_dir, &tip_ref).ok()?;
+        if new_sha == current_commit {
+            None
+        } else {
+            Some(format!(
+                "{} -> {}",
+                short_sha(current_commit),
+                short_sha(&new_sha)
+            ))
+        }
+    }
+
     // Detect duplicate installName values in the lockfile
     {
         let mut seen = HashSet::new();
@@ -52,6 +98,10 @@ pub fn run_doctor(apply: bool) -> Result<()> {
     for s in &lf.skills {
         let mut skill_messages: Vec<String> = Vec::new();
         let install_dir = install_root.join(&s.install_name);
+        let spec = s.source.repo_spec();
+        let cache_dir =
+            paths::resolve_or_primary_cache_path(&spec.url, &spec.host, &spec.owner, &spec.repo);
+        referenced_caches.insert(cache_dir.clone());
         let mut local_modified = false;
         if !install_dir.exists() {
             had_issues = true;
@@ -60,30 +110,13 @@ pub fn run_doctor(apply: bool) -> Result<()> {
                 install_dir.display()
             ));
             if apply {
-                let spec = s.source.repo_spec();
-                let cache_dir = paths::resolve_or_primary_cache_path(
-                    &spec.url,
-                    &spec.host,
-                    &spec.owner,
-                    &spec.repo,
+                rebuild_missing_install(
+                    &cache_dir,
+                    s,
+                    &install_dir,
+                    &mut skill_messages,
+                    &mut orphans_to_drop,
                 );
-                if cache_dir.exists() && git::has_object(&cache_dir, &s.commit).unwrap_or(false) {
-                    // attempt rebuild via archive
-                    if let Err(e) = crate::install::extract_subdir_from_commit(
-                        &cache_dir,
-                        &s.commit,
-                        s.source.skill_path(),
-                        &install_dir,
-                    ) {
-                        skill_messages.push(format!("  Rebuild failed: {e}"));
-                    } else {
-                        skill_messages.push("  Rebuilt from locked commit.".to_string());
-                    }
-                } else {
-                    skill_messages.push("  Cannot rebuild: cache/commit missing.".to_string());
-                    // mark this exact lock entry for removal on apply
-                    orphans_to_drop.insert(lock_entry_key(s));
-                }
             }
         } else {
             if let Err(msg) = validate_skill_manifest(&install_dir) {
@@ -106,26 +139,7 @@ pub fn run_doctor(apply: bool) -> Result<()> {
                 }
             }
         }
-        // cache presence
-        let spec = s.source.repo_spec();
-        let cache_dir =
-            paths::resolve_or_primary_cache_path(&spec.url, &spec.host, &spec.owner, &spec.repo);
-        referenced_caches.insert(cache_dir.clone());
-        let mut upstream_update: Option<String> = None;
-        if cache_dir.exists() {
-            if let Ok(branch) = git::detect_or_set_default_branch(&cache_dir, spec) {
-                let tip_ref = format!("refs/remotes/origin/{branch}");
-                if let Ok(new_sha) = git::rev_parse(&cache_dir, &tip_ref) {
-                    if new_sha != s.commit {
-                        upstream_update = Some(format!(
-                            "{} -> {}",
-                            short_sha(&s.commit),
-                            short_sha(&new_sha)
-                        ));
-                    }
-                }
-            }
-        }
+        let upstream_update = compute_upstream_update(&cache_dir, &spec, &s.commit);
         if !cache_dir.exists() {
             had_issues = true;
             skill_messages.push(format!("- Cache clone missing: {}", cache_dir.display()));
@@ -164,68 +178,12 @@ pub fn run_doctor(apply: bool) -> Result<()> {
         }
     }
 
-    // Detect and optionally prune unreferenced cache clones
-    {
-        let cache_root = paths::cache_root();
-        let mut cache_messages: Vec<String> = Vec::new();
-        if cache_root.exists() {
-            // Walk cache_root/<host>/<owner>/<repo>
-            if let Ok(hosts) = fs::read_dir(&cache_root) {
-                for host in hosts.flatten() {
-                    if !host.path().is_dir() {
-                        continue;
-                    }
-                    if let Ok(owners) = fs::read_dir(host.path()) {
-                        for owner in owners.flatten() {
-                            if !owner.path().is_dir() {
-                                continue;
-                            }
-                            if let Ok(repos) = fs::read_dir(owner.path()) {
-                                for repo in repos.flatten() {
-                                    let repo_path = repo.path();
-                                    if !repo_path.is_dir() {
-                                        continue;
-                                    }
-                                    // Only consider directories that look like git clones
-                                    if !repo_path.join(".git").exists() {
-                                        continue;
-                                    }
-                                    if !referenced_caches.contains(&repo_path) {
-                                        had_issues = true;
-                                        cache_messages.push(format!(
-                                            "- Unreferenced cache clone: {}",
-                                            repo_path.display()
-                                        ));
-                                        if apply {
-                                            if let Err(e) = fs::remove_dir_all(&repo_path) {
-                                                cache_messages.push(format!(
-                                                    "  Failed to prune cache '{}': {}",
-                                                    repo_path.display(),
-                                                    e
-                                                ));
-                                            } else {
-                                                cache_messages.push(format!(
-                                                    "  Pruned unreferenced cache: {}",
-                                                    repo_path.display()
-                                                ));
-                                                // Try cleaning up empty parents (owner/, host/)
-                                                let _ = clean_if_empty(owner.path());
-                                                let _ = clean_if_empty(host.path());
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        if !cache_messages.is_empty() {
-            println!("== Cache ==");
-            for msg in cache_messages {
-                println!("{msg}");
-            }
+    let cache_messages = gather_cache_messages(&referenced_caches, apply);
+    if !cache_messages.is_empty() {
+        had_issues = true;
+        println!("== Cache ==");
+        for msg in cache_messages {
+            println!("{msg}");
         }
     }
     // Normalize lockfile and drop orphan entries when applying
@@ -263,6 +221,57 @@ fn clean_if_empty(dir: PathBuf) -> Result<()> {
         fs::remove_dir_all(dir)?;
     }
     Ok(())
+}
+
+fn gather_cache_messages(referenced_caches: &HashSet<PathBuf>, apply: bool) -> Vec<String> {
+    let mut cache_messages = Vec::new();
+    let cache_root = paths::cache_root();
+    if !cache_root.exists() {
+        return cache_messages;
+    }
+    let walker = WalkDir::new(&cache_root)
+        .min_depth(3)
+        .max_depth(3)
+        .into_iter()
+        .filter_map(|entry| entry.ok());
+    for entry in walker {
+        if !entry.file_type().is_dir() {
+            continue;
+        }
+        let repo_path = entry.into_path();
+        if !repo_path.join(".git").exists() || referenced_caches.contains(&repo_path) {
+            continue;
+        }
+        cache_messages.push(format!(
+            "- Unreferenced cache clone: {}",
+            repo_path.display()
+        ));
+        if apply {
+            if let Err(e) = fs::remove_dir_all(&repo_path) {
+                cache_messages.push(format!(
+                    "  Failed to prune cache '{}': {}",
+                    repo_path.display(),
+                    e
+                ));
+            } else {
+                cache_messages.push(format!(
+                    "  Pruned unreferenced cache: {}",
+                    repo_path.display()
+                ));
+                prune_empty_parents(&repo_path);
+            }
+        }
+    }
+    cache_messages
+}
+
+fn prune_empty_parents(repo_path: &Path) {
+    if let Some(owner_dir) = repo_path.parent() {
+        let _ = clean_if_empty(owner_dir.to_path_buf());
+        if let Some(host_dir) = owner_dir.parent() {
+            let _ = clean_if_empty(host_dir.to_path_buf());
+        }
+    }
 }
 
 fn short_sha(full: &str) -> &str {

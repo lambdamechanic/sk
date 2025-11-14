@@ -47,7 +47,8 @@ EOF
 RAW=$(gh api graphql -f query="$GQL" -F owner="$OWNER" -F name="$NAME" -F number="$PR_NUM")
 
 # Helper: find thumbs/eyes on PR or comments by Codex
-parse_js='def codex: ($codex_csv | split(","));
+parse_js=$(cat <<'JQ'
+def codex: ($codex_csv | split(","));
 def has_codex_up(rgs): (rgs // []) | any(.content=="THUMBS_UP" and (.users.nodes | any(.login as $l | codex | index($l))));
 def has_codex_eyes(rgs): (rgs // []) | any(.content=="EYES" and (.users.nodes | any(.login as $l | codex | index($l))));
 
@@ -69,7 +70,8 @@ def has_codex_eyes(rgs): (rgs // []) | any(.content=="EYES" and (.users.nodes | 
         | map({path, firstAuthor: (.comments[0].author.login), excerpt: (.comments[0].body | gsub("\n";" ") | .[:160]), url: (.comments[0].url)})
       )
     }
-'
+JQ
+)
 
 JSON=$(echo "$RAW" | jq --arg codex_csv "$CODEX_CSV" "$parse_js")
 

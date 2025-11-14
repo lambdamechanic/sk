@@ -6,19 +6,10 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::TempDir;
 
-fn git(args: &[&str], cwd: &Path) {
-    let status = Command::new("git")
-        .args(args)
-        .current_dir(cwd)
-        .status()
-        .unwrap();
-    assert!(
-        status.success(),
-        "git {:?} failed in {}",
-        args,
-        cwd.display()
-    );
-}
+#[path = "support/mod.rs"]
+mod support;
+
+use support::{clone_into_cache, extract_subdir_from_commit, git, path_to_file_url};
 
 fn write(path: &Path, contents: &str) {
     if let Some(p) = path.parent() {
@@ -89,72 +80,6 @@ fn init_skill_repo(root: &Path, name: &str, skill_path: &str) -> (PathBuf, Strin
     (bare, v1, v2)
 }
 
-fn clone_to_cache(
-    cache_root: &Path,
-    host: &str,
-    owner: &str,
-    repo: &str,
-    bare_remote: &Path,
-    url_for_lock: &str,
-) -> PathBuf {
-    fn hashed_leaf(url: &str, repo: &str) -> String {
-        use sha2::{Digest, Sha256};
-        let h = Sha256::digest(url.as_bytes());
-        let hex = format!("{h:x}");
-        let short = &hex[..12];
-        format!("{repo}-{short}")
-    }
-    let leaf = if host == "local" && url_for_lock.starts_with("file://") {
-        hashed_leaf(url_for_lock, repo)
-    } else {
-        repo.to_string()
-    };
-    let dest = cache_root.join("repos").join(host).join(owner).join(leaf);
-    fs::create_dir_all(dest.parent().unwrap()).unwrap();
-    git(
-        &[
-            "clone",
-            bare_remote.to_str().unwrap(),
-            dest.to_str().unwrap(),
-        ],
-        dest.parent().unwrap(),
-    );
-    // Ensure origin/HEAD set to main
-    git(&["remote", "set-head", "origin", "-a"], &dest);
-    dest
-}
-
-fn extract_subdir(cache: &Path, commit: &str, subdir: &str, dest: &Path) {
-    fs::create_dir_all(dest).unwrap();
-    let strip = subdir.split('/').count().to_string();
-    let mut archive = Command::new("git")
-        .args([
-            "-C",
-            cache.to_str().unwrap(),
-            "archive",
-            "--format=tar",
-            commit,
-            subdir,
-        ])
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-        .unwrap();
-    let stdout = archive.stdout.take().unwrap();
-    let status = Command::new("tar")
-        .args([
-            "-x",
-            "--strip-components",
-            &strip,
-            "-C",
-            dest.to_str().unwrap(),
-        ])
-        .stdin(stdout)
-        .status()
-        .unwrap();
-    assert!(status.success());
-    let _ = archive.wait();
-}
-
 prop_compose! {
     fn counts_and_index()(n in 2usize..=3)(idx in 0usize..n-1, n in Just(n)) -> (usize, usize) { (n, idx) }
 }
@@ -179,23 +104,13 @@ proptest! {
             let repo = format!("r{i}");
             let skill_path = format!("skill-{i}");
             let (bare, v1, v2) = init_skill_repo(&remotes_root, &repo, &skill_path);
-            let file_url = {
-                #[cfg(windows)]
-                {
-                    let s = bare.to_string_lossy().replace('\\', "/");
-                    if s.len() >= 2 && s.as_bytes()[1] == b':' { format!("file:///{s}") }
-                    else if s.starts_with("//") { format!("file:{s}") }
-                    else if s.starts_with('/') { format!("file://{s}") } else { format!("file:///{s}") }
-                }
-                #[cfg(not(windows))]
-                { format!("file://{}", bare.to_string_lossy()) }
-            };
-            let cache = clone_to_cache(&cache_root, host, owner, &repo, &bare, &file_url);
+            let file_url = path_to_file_url(&bare);
+            let cache = clone_into_cache(&cache_root, host, owner, &repo, &bare, &file_url);
 
             // Install v1 into project
             let installed_name = format!("s{i}");
             let dest = project.join("skills").join(&installed_name);
-            extract_subdir(&cache, &v1, &skill_path, &dest);
+            extract_subdir_from_commit(&cache, &v1, &skill_path, &dest);
             let digest = digest_dir(&dest);
             entries.push((installed_name, repo, skill_path, v1, v2, digest, file_url));
         }

@@ -188,7 +188,7 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
                 combined.trim()
             );
             // Remove worktree now so we can delete the local branch cleanly.
-            let rm_status = Command::new("git")
+            let removed = match Command::new("git")
                 .args([
                     "-C",
                     &target.cache_dir.to_string_lossy(),
@@ -197,24 +197,27 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
                     "--force",
                     wt_path.to_string_lossy().as_ref(),
                 ])
-                .status();
-            let mut removed = false;
-            if let Ok(st) = rm_status {
-                if st.success() {
+                .status()
+            {
+                Ok(st) if st.success() => {
                     wt_guard.disarm();
-                    removed = true;
-                } else {
+                    true
+                }
+                Ok(st) => {
                     eprintln!(
                         "Warning: git worktree remove failed (status {st}). Branch cleanup skipped; guard will retry on drop."
                     );
+                    false
                 }
-            } else {
-                eprintln!(
-                    "Warning: failed to spawn 'git worktree remove'. Branch cleanup skipped; guard will retry on drop."
-                );
-            }
+                Err(_) => {
+                    eprintln!(
+                        "Warning: failed to spawn 'git worktree remove'. Branch cleanup skipped; guard will retry on drop."
+                    );
+                    false
+                }
+            };
             if removed {
-                let del = Command::new("git")
+                match Command::new("git")
                     .args([
                         "-C",
                         &target.cache_dir.to_string_lossy(),
@@ -222,15 +225,15 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
                         "-D",
                         &branch_name,
                     ])
-                    .status();
-                if let Ok(st) = del {
-                    if !st.success() {
-                        eprintln!(
-                            "Warning: failed to delete temp branch '{branch_name}' (status {st})."
-                        );
+                    .status()
+                {
+                    Ok(st) if st.success() => {}
+                    Ok(st) => eprintln!(
+                        "Warning: failed to delete temp branch '{branch_name}' (status {st})."
+                    ),
+                    Err(_) => {
+                        eprintln!("Warning: failed to spawn 'git branch -D {branch_name}'.");
                     }
-                } else {
-                    eprintln!("Warning: failed to spawn 'git branch -D {branch_name}'.");
                 }
             }
             return Ok(());

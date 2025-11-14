@@ -1,25 +1,15 @@
 use assert_cmd::cargo::cargo_bin_cmd;
 use serde_json::json;
-use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::tempdir;
 
-fn git(args: &[&str], cwd: &Path) {
-    let status = Command::new("git")
-        .args(args)
-        .current_dir(cwd)
-        .status()
-        .unwrap();
-    assert!(
-        status.success(),
-        "git {:?} failed in {}",
-        args,
-        cwd.display()
-    );
-}
+#[path = "support/mod.rs"]
+mod support;
+
+use support::{cache_repo_path, git, path_to_file_url};
 
 fn write(path: &Path, contents: &str) {
     if let Some(p) = path.parent() {
@@ -65,41 +55,6 @@ fn init_bare_and_work_with_v1(
     .unwrap();
     let v1 = v1.trim().to_string();
     (bare, work, v1)
-}
-
-fn path_to_file_url(p: &Path) -> String {
-    #[cfg(windows)]
-    {
-        let s = p.to_string_lossy().replace('\\', "/");
-        if s.len() >= 2 && s.as_bytes()[1] == b':' {
-            return format!("file:///{s}");
-        }
-        if s.starts_with("//") {
-            return format!("file:{s}");
-        }
-        if s.starts_with('/') {
-            return format!("file://{s}");
-        }
-        format!("file:///{s}")
-    }
-    #[cfg(not(windows))]
-    {
-        format!("file://{}", p.to_string_lossy())
-    }
-}
-
-fn hashed_leaf(url: &str, repo: &str) -> String {
-    let h = Sha256::digest(url.as_bytes());
-    let hex = format!("{h:x}");
-    let short = &hex[..12];
-    format!("{repo}-{short}")
-}
-
-fn cache_repo_path(cache_root: &Path, owner: &str, repo: &str, url: &str) -> PathBuf {
-    cache_root
-        .join("repos/local")
-        .join(owner)
-        .join(hashed_leaf(url, repo))
 }
 
 fn run_update(project: &Path, cache_root: &Path) {
@@ -148,7 +103,7 @@ fn update_is_cache_only_and_fetches() {
     // Pre-clone cache at v1 so it becomes stale after we push v2
     let cache_root = root.join("cache");
     let url1 = path_to_file_url(&bare);
-    let cache_repo = cache_repo_path(&cache_root, "o", "r1", &url1);
+    let cache_repo = cache_repo_path(&cache_root, "local", "o", "r1", &url1);
     fs::create_dir_all(cache_repo.parent().unwrap()).unwrap();
     git(
         &[
@@ -271,7 +226,7 @@ fn update_refreshes_default_branch_head() {
 
     run_update(&project, &cache_root);
 
-    let cache_repo = cache_repo_path(&cache_root, "o", "rhead", &url);
+    let cache_repo = cache_repo_path(&cache_root, "local", "o", "rhead", &url);
     assert!(
         cache_repo.exists(),
         "cache repo missing at {}",

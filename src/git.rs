@@ -206,16 +206,20 @@ fn query_remote_default_branch(remote: &str) -> Result<String> {
         bail!("git ls-remote failed for {remote}");
     }
     let txt = String::from_utf8_lossy(&ls.stdout);
-    for line in txt.lines() {
-        if line.starts_with("ref: ") && line.ends_with("\tHEAD") {
-            if let Some(name) = line.split_whitespace().nth(1) {
-                if let Some(branch) = name.rsplit('/').next() {
-                    if !branch.is_empty() {
-                        return Ok(branch.to_string());
-                    }
-                }
-            }
+    for line in txt
+        .lines()
+        .filter(|l| l.starts_with("ref: ") && l.ends_with("\tHEAD"))
+    {
+        let Some(name) = line.split_whitespace().nth(1) else {
+            continue;
+        };
+        let Some(branch) = name.rsplit('/').next() else {
+            continue;
+        };
+        if branch.is_empty() {
+            continue;
         }
+        return Ok(branch.to_string());
     }
     bail!("unable to determine default branch from ls-remote output for {remote}");
 }

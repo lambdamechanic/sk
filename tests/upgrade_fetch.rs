@@ -6,19 +6,10 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::tempdir;
 
-fn git(args: &[&str], cwd: &Path) {
-    let status = Command::new("git")
-        .args(args)
-        .current_dir(cwd)
-        .status()
-        .unwrap();
-    assert!(
-        status.success(),
-        "git {:?} failed in {}",
-        args,
-        cwd.display()
-    );
-}
+#[path = "support/mod.rs"]
+mod support;
+
+use support::{clone_into_cache, extract_subdir_from_commit, git, path_to_file_url};
 
 fn write(path: &Path, contents: &str) {
     if let Some(p) = path.parent() {
@@ -29,27 +20,6 @@ fn write(path: &Path, contents: &str) {
 
 fn digest_dir(dir: &Path) -> String {
     sk::digest::digest_dir(dir).expect("compute digest")
-}
-
-fn path_to_file_url(p: &Path) -> String {
-    #[cfg(windows)]
-    {
-        let s = p.to_string_lossy().replace('\\', "/");
-        if s.len() >= 2 && s.as_bytes()[1] == b':' {
-            return format!("file:///{s}");
-        }
-        if s.starts_with("//") {
-            return format!("file:{s}");
-        }
-        if s.starts_with('/') {
-            return format!("file://{s}");
-        }
-        format!("file:///{s}")
-    }
-    #[cfg(not(windows))]
-    {
-        format!("file://{}", p.to_string_lossy())
-    }
 }
 
 fn init_skill_repo(root: &Path, name: &str, skill_path: &str) -> (PathBuf, String, String) {
@@ -108,72 +78,6 @@ fn init_skill_repo(root: &Path, name: &str, skill_path: &str) -> (PathBuf, Strin
     (bare, v1, v2)
 }
 
-fn clone_to_cache(
-    cache_root: &Path,
-    host: &str,
-    owner: &str,
-    repo: &str,
-    bare_remote: &Path,
-    url_for_lock: &str,
-) -> PathBuf {
-    // Hash-only for local file:// sources
-    fn hashed_leaf(url: &str, repo: &str) -> String {
-        use sha2::{Digest, Sha256};
-        let h = Sha256::digest(url.as_bytes());
-        let hex = format!("{h:x}");
-        let short = &hex[..12];
-        format!("{repo}-{short}")
-    }
-    let leaf = if host == "local" && url_for_lock.starts_with("file://") {
-        hashed_leaf(url_for_lock, repo)
-    } else {
-        repo.to_string()
-    };
-    let dest = cache_root.join("repos").join(host).join(owner).join(leaf);
-    fs::create_dir_all(dest.parent().unwrap()).unwrap();
-    git(
-        &[
-            "clone",
-            bare_remote.to_str().unwrap(),
-            dest.to_str().unwrap(),
-        ],
-        dest.parent().unwrap(),
-    );
-    git(&["remote", "set-head", "origin", "-a"], &dest);
-    dest
-}
-
-fn extract_subdir(cache: &Path, commit: &str, subdir: &str, dest: &Path) {
-    fs::create_dir_all(dest).unwrap();
-    let strip = subdir.split('/').count().to_string();
-    let mut archive = Command::new("git")
-        .args([
-            "-C",
-            cache.to_str().unwrap(),
-            "archive",
-            "--format=tar",
-            commit,
-            subdir,
-        ])
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-        .unwrap();
-    let stdout = archive.stdout.take().unwrap();
-    let status = Command::new("tar")
-        .args([
-            "-x",
-            "--strip-components",
-            &strip,
-            "-C",
-            dest.to_str().unwrap(),
-        ])
-        .stdin(stdout)
-        .status()
-        .unwrap();
-    assert!(status.success());
-    let _ = archive.wait();
-}
-
 #[test]
 fn upgrade_fetches_cache_and_applies_without_update() {
     let tmp = tempdir().unwrap();
@@ -189,32 +93,12 @@ fn upgrade_fetches_cache_and_applies_without_update() {
     let repo = "r0";
     let skill_path = "skill-0";
     let (bare, v1, v2) = init_skill_repo(&remotes_root, repo, skill_path);
-    fn path_to_file_url(p: &Path) -> String {
-        #[cfg(windows)]
-        {
-            let s = p.to_string_lossy().replace('\\', "/");
-            if s.len() >= 2 && s.as_bytes()[1] == b':' {
-                return format!("file:///{s}");
-            }
-            if s.starts_with("//") {
-                return format!("file:{s}");
-            }
-            if s.starts_with('/') {
-                return format!("file://{s}");
-            }
-            format!("file:///{s}")
-        }
-        #[cfg(not(windows))]
-        {
-            format!("file://{}", p.to_string_lossy())
-        }
-    }
     let file_url = path_to_file_url(&bare);
-    let cache = clone_to_cache(&cache_root, host, owner, repo, &bare, &file_url);
+    let cache = clone_into_cache(&cache_root, host, owner, repo, &bare, &file_url);
 
     // Install v1
     let dest = project.join("skills").join("s0");
-    extract_subdir(&cache, &v1, skill_path, &dest);
+    extract_subdir_from_commit(&cache, &v1, skill_path, &dest);
     let digest_v1 = digest_dir(&dest);
     let lock = serde_json::json!({
         "version":1,
@@ -294,11 +178,11 @@ fn upgrade_handles_cross_device_rename_simulation() {
             format!("file://{}", bare.to_string_lossy())
         }
     };
-    let cache = clone_to_cache(&cache_root, host, owner, repo, &bare, &file_url);
+    let cache = clone_into_cache(&cache_root, host, owner, repo, &bare, &file_url);
 
     // Install v1
     let dest = project.join("skills").join("s0");
-    extract_subdir(&cache, &v1, skill_path, &dest);
+    extract_subdir_from_commit(&cache, &v1, skill_path, &dest);
     let digest_v1 = digest_dir(&dest);
     let lock = serde_json::json!({
         "version":1,
@@ -348,7 +232,7 @@ fn upgrade_does_not_mutate_on_extract_failure() {
     // r0 has stable skill path
     let (bare0, v1_0, _v2_0) = init_skill_repo(&remotes_root, "r0", "skill-0");
     let file_url0 = path_to_file_url(&bare0);
-    let cache0 = clone_to_cache(&cache_root, host, owner, "r0", &bare0, &file_url0);
+    let cache0 = clone_into_cache(&cache_root, host, owner, "r0", &bare0, &file_url0);
     // r1 removes the skill path in v2 to trigger extract failure
     let bare1 = remotes_root.join("removes").join("r1.git");
     fs::create_dir_all(&bare1).unwrap();
@@ -376,7 +260,7 @@ fn upgrade_does_not_mutate_on_extract_failure() {
     git(&["commit", "-m", "remove skill"], &work1);
     git(&["push", "origin", "main"], &work1);
     let file_url1 = path_to_file_url(&bare1);
-    let cache1 = clone_to_cache(&cache_root, host, owner, "r1", &bare1, &file_url1);
+    let cache1 = clone_into_cache(&cache_root, host, owner, "r1", &bare1, &file_url1);
     let v1_1 = String::from_utf8(
         Command::new("git")
             .args(["rev-parse", "HEAD~1"]) // the v1 commit
@@ -390,10 +274,10 @@ fn upgrade_does_not_mutate_on_extract_failure() {
 
     // Install v1 contents
     let dest0 = project.join("skills").join("s0");
-    extract_subdir(&cache0, &v1_0, "skill-0", &dest0);
+    extract_subdir_from_commit(&cache0, &v1_0, "skill-0", &dest0);
     let dig0 = digest_dir(&dest0);
     let dest1 = project.join("skills").join("s1");
-    extract_subdir(&cache1, &v1_1, "skill-1", &dest1);
+    extract_subdir_from_commit(&cache1, &v1_1, "skill-1", &dest1);
     let dig1 = digest_dir(&dest1);
 
     // Lockfile
