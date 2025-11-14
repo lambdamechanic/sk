@@ -1,8 +1,8 @@
 use super::target::SyncTarget;
 use crate::install;
-use anyhow::{Context, Result};
 #[cfg(not(any(unix, windows)))]
 use anyhow::bail;
+use anyhow::{Context, Result};
 use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::symlink;
