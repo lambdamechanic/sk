@@ -4,6 +4,7 @@ use assert_cmd::cargo::cargo_bin_cmd;
 use assert_cmd::Command as AssertCommand;
 use serde::Deserialize;
 use serde_json::Value as Json;
+use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -262,3 +263,132 @@ pub fn parse_status_entries(value: Json) -> Vec<StatusEntry> {
 pub fn normalize_newlines(input: &str) -> String {
     input.replace("\r\n", "\n")
 }
+
+pub struct FakeGh {
+    bin_dir: PathBuf,
+    state_file: PathBuf,
+}
+
+impl FakeGh {
+    pub fn new(root: &Path) -> Self {
+        let stub_dir = root.join("fake-gh");
+        fs::create_dir_all(&stub_dir).unwrap();
+        let src = stub_dir.join("main.rs");
+        fs::write(&src, FAKE_GH_SOURCE).unwrap();
+        let bin_name = if cfg!(windows) { "gh.exe" } else { "gh" };
+        let bin_path = stub_dir.join(bin_name);
+        let status = Command::new("rustc")
+            .current_dir(&stub_dir)
+            .args([
+                "-O",
+                src.file_name().unwrap().to_str().unwrap(),
+                "-o",
+                bin_path.to_string_lossy().as_ref(),
+            ])
+            .status()
+            .expect("rustc should compile fake gh");
+        assert!(status.success(), "failed to compile fake gh stub");
+        Self {
+            bin_dir: stub_dir.clone(),
+            state_file: stub_dir.join("state.txt"),
+        }
+    }
+
+    pub fn configure_cmd(&self, cmd: &mut AssertCommand) {
+        let mut combined_paths = vec![self.bin_dir.clone()];
+        if let Some(existing) = env::var_os("PATH") {
+            combined_paths.extend(env::split_paths(&existing));
+        }
+        let joined = env::join_paths(combined_paths).expect("join PATH entries");
+        cmd.env("PATH", joined);
+        cmd.env("SK_TEST_GH_STATE_FILE", &self.state_file);
+    }
+
+    pub fn clear_state(&self) {
+        let _ = fs::remove_file(&self.state_file);
+    }
+}
+
+const FAKE_GH_SOURCE: &str = r#"use std::{
+    env,
+    fs,
+    path::PathBuf,
+    process,
+};
+
+fn read_state(path: &PathBuf) -> Option<(String, String, String)> {
+    let data = fs::read_to_string(path).ok()?;
+    let mut parts = data.splitn(3, '|');
+    let number = parts.next()?.to_string();
+    let url = parts.next()?.to_string();
+    let status = parts.next()?.to_string();
+    Some((number, url, status))
+}
+
+fn write_state(path: &PathBuf, number: &str, url: &str, status: &str) {
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let content = format!("{number}|{url}|{status}");
+    fs::write(path, content).expect("write fake gh state");
+}
+
+fn main() {
+    let mut args = env::args().skip(1);
+    let Some(cmd) = args.next() else {
+        process::exit(1);
+    };
+    if cmd != "pr" {
+        eprintln!("fake gh only supports pr");
+        process::exit(1);
+    }
+    let Some(sub) = args.next() else {
+        eprintln!("fake gh missing pr subcommand");
+        process::exit(1);
+    };
+    let state_path = PathBuf::from(
+        env::var("SK_TEST_GH_STATE_FILE").expect("missing SK_TEST_GH_STATE_FILE"),
+    );
+    match sub.as_str() {
+        "list" => {
+            if let Some((number, url, status)) = read_state(&state_path) {
+                let mergeable = if status.eq_ignore_ascii_case("DIRTY") {
+                    "CONFLICTING"
+                } else {
+                    "MERGEABLE"
+                };
+                println!(
+                    "[{{\"number\":{number},\"url\":\"{url}\",\"mergeStateStatus\":\"{status}\",\"mergeable\":\"{mergeable}\"}}]"
+                );
+            } else {
+                println!("[]");
+            }
+        }
+        "create" => {
+            let status = env::var("SK_TEST_GH_PR_STATE").unwrap_or_else(|_| "CLEAN".into());
+            let url = env::var("SK_TEST_GH_PR_URL").unwrap_or_else(|_| "https://example.test/pr/1".into());
+            let number = env::var("SK_TEST_GH_PR_NUMBER").unwrap_or_else(|_| "1".into());
+            write_state(&state_path, &number, &url, &status);
+            println!("{url}");
+        }
+        "merge" => {
+            if let Ok(msg) = env::var("SK_TEST_GH_AUTO_MERGE_ERROR") {
+                eprintln!("{msg}");
+                process::exit(1);
+            }
+            let status = read_state(&state_path)
+                .map(|(_, _, status)| status)
+                .unwrap_or_else(|| "CLEAN".into());
+            if status.eq_ignore_ascii_case("DIRTY") {
+                eprintln!("conflict");
+                process::exit(1);
+            }
+            eprintln!("merge ok");
+        }
+        other => {
+            eprintln!("fake gh unsupported subcommand: {other}");
+            process::exit(1);
+        }
+    }
+}
+"#;

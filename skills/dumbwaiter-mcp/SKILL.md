@@ -26,7 +26,8 @@ Tools overview
 
 Selectors and conditions (GitHub)
 - selector: `{ "owner": "ORG", "repo": "REPO", "pr": 123 }`
-- condition: one of `checks_succeeded`, `checks_failed`, `pr_merged`
+- condition: one of `checks_succeeded`, `checks_failed`, `pr_approved`, `changes_requested`, `workflow_completed`, `pr_merged`, `comment_received`
+  - For `comment_received`, you may pass `filters`: `{ since: <RFC3339|epoch>, include_bots: true, author_allowlist?: ["alice"], author_denylist?: ["bot"] }` to narrow notifications.
 
 Happy-path flow
 1) Start wait
@@ -51,9 +52,10 @@ Examples
 - “Wait for PR 42 in acme/widgets until checks pass.”
   - start → `{ provider: "github", selector: { owner: "acme", repo: "widgets", pr: 42 }, condition: "checks_succeeded" }`
   - await → `{ wait_id }`
+- “Wait for any new comment on PR 42 since midnight UTC.”
+  - start → `{ provider: "github", selector: { owner: "acme", repo: "widgets", pr: 42 }, condition: "comment_received", filters: { since: "2025-01-01T00:00:00Z", include_bots: true } }`
 
 Troubleshooting
 - `unknown` status: the `wait_id` was not found (DB purge or wrong project).
 - No progress events: confirm host supports MCP notifications and server is connected.
 - Auth failures: ensure `GITHUB_TOKEN` is set and valid for the target repo.
-

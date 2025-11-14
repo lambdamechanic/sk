@@ -1,6 +1,7 @@
 use crate::{config, digest, git, lock, paths};
 use anyhow::{anyhow, bail, Context, Result};
 use chrono::Utc;
+use serde::Deserialize;
 use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::symlink;
@@ -245,7 +246,9 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
         let owner = &target.spec.owner;
         let repo = &target.spec.repo;
         println!("Pushed branch '{branch_name}' to origin for {owner}/{repo}.");
-        println!("PR hint: gh pr create --fill --head {branch_name}");
+        if let Err(err) = automate_pr_flow(&wt_path, &branch_name, &target.spec) {
+            eprintln!("Warning: failed to automate PR creation/merge for '{branch_name}': {err:#}");
+        }
     } else {
         let stderr = String::from_utf8_lossy(&push_out.stderr);
         let stdout = String::from_utf8_lossy(&push_out.stdout);
@@ -397,6 +400,223 @@ fn normalize_skill_path(input: &str) -> String {
     } else {
         trimmed.to_string()
     }
+}
+
+fn automate_pr_flow(wt_path: &Path, branch_name: &str, spec: &git::RepoSpec) -> Result<()> {
+    if which::which("gh").is_err() {
+        println!(
+            "Skipping PR automation: 'gh' CLI not found. Install https://cli.github.com/ to auto-open PRs."
+        );
+        return Ok(());
+    }
+
+    let repo_selector = format_repo_selector(spec);
+    let (pr, created) = ensure_pull_request(&repo_selector, wt_path, branch_name)?;
+    if created {
+        println!("Opened PR {} for branch '{branch_name}'.", pr.url);
+    } else {
+        println!("Reusing PR {} for branch '{branch_name}'.", pr.url);
+    }
+
+    match auto_merge_pull_request(&repo_selector, wt_path, &pr) {
+        AutoMergeOutcome::Armed => {
+            println!(
+                "Auto-merge armed; GitHub will land {} once required checks pass.",
+                pr.url
+            );
+        }
+        AutoMergeOutcome::Conflict => {
+            println!(
+                "Auto-merge blocked by conflicts. Resolve manually: {}",
+                pr.url
+            );
+        }
+        AutoMergeOutcome::Skipped(reason) => {
+            println!("Auto-merge skipped for {} ({reason}).", pr.url);
+            if let Some(tip) = auto_merge_tip(&reason, spec) {
+                println!("{tip}");
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn ensure_pull_request(
+    repo_selector: &str,
+    wt_path: &Path,
+    branch_name: &str,
+) -> Result<(GhPrInfo, bool)> {
+    if let Some(existing) = find_existing_pr(repo_selector, wt_path, branch_name)? {
+        return Ok((existing, false));
+    }
+    create_pull_request(repo_selector, wt_path, branch_name)?;
+    let created = find_existing_pr(repo_selector, wt_path, branch_name)?
+        .ok_or_else(|| anyhow!("gh pr create succeeded but no PR was found"))?;
+    Ok((created, true))
+}
+
+fn find_existing_pr(
+    repo_selector: &str,
+    wt_path: &Path,
+    branch_name: &str,
+) -> Result<Option<GhPrInfo>> {
+    let out = Command::new("gh")
+        .current_dir(wt_path)
+        .args([
+            "pr",
+            "list",
+            "--state",
+            "all",
+            "--head",
+            branch_name,
+            "--limit",
+            "1",
+            "--json",
+            "number,url,mergeStateStatus,mergeable",
+            "-R",
+            repo_selector,
+        ])
+        .output()
+        .context("run gh pr list")?;
+    if !out.status.success() {
+        bail!(
+            "gh pr list failed: {}",
+            format_gh_failure(&out.stdout, &out.stderr)
+        );
+    }
+    let mut entries: Vec<GhPrInfo> =
+        serde_json::from_slice(&out.stdout).context("parse gh pr list JSON output")?;
+    Ok(entries.pop())
+}
+
+fn create_pull_request(repo_selector: &str, wt_path: &Path, branch_name: &str) -> Result<()> {
+    let out = Command::new("gh")
+        .current_dir(wt_path)
+        .args([
+            "pr",
+            "create",
+            "--fill",
+            "--head",
+            branch_name,
+            "-R",
+            repo_selector,
+        ])
+        .output()
+        .context("run gh pr create")?;
+    if !out.status.success() {
+        bail!(
+            "gh pr create failed: {}",
+            format_gh_failure(&out.stdout, &out.stderr)
+        );
+    }
+    Ok(())
+}
+
+fn auto_merge_pull_request(repo_selector: &str, wt_path: &Path, pr: &GhPrInfo) -> AutoMergeOutcome {
+    if is_pr_conflicted(pr) {
+        return AutoMergeOutcome::Conflict;
+    }
+
+    let number = pr.number.to_string();
+    match Command::new("gh")
+        .current_dir(wt_path)
+        .args([
+            "pr",
+            "merge",
+            &number,
+            "--auto",
+            "--merge",
+            "-R",
+            repo_selector,
+        ])
+        .output()
+    {
+        Ok(out) if out.status.success() => AutoMergeOutcome::Armed,
+        Ok(out) => AutoMergeOutcome::Skipped(format_gh_failure(&out.stdout, &out.stderr)),
+        Err(err) => AutoMergeOutcome::Skipped(err.to_string()),
+    }
+}
+
+fn is_pr_conflicted(pr: &GhPrInfo) -> bool {
+    matches!(
+        pr.merge_state_status
+            .as_deref()
+            .map(|s| s.eq_ignore_ascii_case("dirty")),
+        Some(true)
+    ) || matches!(
+        pr.mergeable
+            .as_deref()
+            .map(|s| s.eq_ignore_ascii_case("conflicting")),
+        Some(true)
+    )
+}
+
+fn format_repo_selector(spec: &git::RepoSpec) -> String {
+    if spec.host.is_empty() {
+        format!("{}/{}", spec.owner, spec.repo)
+    } else {
+        format!("{}/{}/{}", spec.host, spec.owner, spec.repo)
+    }
+}
+
+fn auto_merge_tip(reason: &str, spec: &git::RepoSpec) -> Option<String> {
+    if !reason
+        .to_ascii_lowercase()
+        .contains("enablepullrequestautomerge")
+    {
+        return None;
+    }
+
+    let repo_slug = format!("{}/{}", spec.owner, spec.repo);
+    let cmd = if spec.host.is_empty() || spec.host.eq_ignore_ascii_case("github.com") {
+        format!("gh repo edit {repo_slug} --enable-auto-merge")
+    } else {
+        format!(
+            "gh repo edit -R {}/{repo_slug} --enable-auto-merge",
+            spec.host
+        )
+    };
+    let host = if spec.host.is_empty() {
+        "github.com"
+    } else {
+        spec.host.as_str()
+    };
+    let settings_url = format!("https://{host}/{repo_slug}/settings");
+    Some(format!(
+        "Tip: enable auto-merge with `{cmd}` or toggle Auto-merge under Settings → General ({settings_url})."
+    ))
+}
+
+fn format_gh_failure(stdout: &[u8], stderr: &[u8]) -> String {
+    let mut combined = String::new();
+    if !stderr.is_empty() {
+        combined.push_str(&String::from_utf8_lossy(stderr));
+    }
+    if !stdout.is_empty() {
+        combined.push_str(&String::from_utf8_lossy(stdout));
+    }
+    let trimmed = combined.trim();
+    if trimmed.is_empty() {
+        "gh command failed".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct GhPrInfo {
+    number: u64,
+    url: String,
+    #[serde(rename = "mergeStateStatus")]
+    merge_state_status: Option<String>,
+    mergeable: Option<String>,
+}
+
+enum AutoMergeOutcome {
+    Armed,
+    Conflict,
+    Skipped(String),
 }
 
 fn mirror_dir(src: &Path, dest: &Path) -> Result<()> {
