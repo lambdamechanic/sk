@@ -162,7 +162,6 @@ fn upgrade_rolls_back_when_apply_fails_mid_loop() {
         "skills": skills.iter().map(|(name, repo, commit, digest)| serde_json::json!({
             "installName": name,
             "source": {"url":"file://dummy","host":"local","owner":"o","repo": repo, "skillPath":"skill"},
-            "ref": null,
             "commit": commit,
             "digest": digest,
             "installedAt": "1970-01-01T00:00:00Z"
@@ -353,7 +352,6 @@ fn upgrade_rolls_back_when_copy_fails_in_swap() {
         "skills": entries.iter().map(|(name, repo, commit, digest)| serde_json::json!({
             "installName": name,
             "source": {"url":"file://dummy","host":"local","owner":"o","repo": repo, "skillPath":"skill"},
-            "ref": null,
             "commit": commit,
             "digest": digest,
             "installedAt": "1970-01-01T00:00:00Z"

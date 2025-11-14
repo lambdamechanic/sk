@@ -154,8 +154,7 @@ fn cmd_list(_root_flag: Option<&str>, json: bool) -> Result<()> {
         println!("[]");
         return Ok(());
     }
-    let data = std::fs::read(&lock_path)?;
-    let lf: lock::Lockfile = serde_json::from_slice(&data)?;
+    let lf = lock::Lockfile::load(&lock_path)?;
     if json {
         println!("{}", serde_json::to_string_pretty(&lf.skills)?);
     } else {
@@ -187,8 +186,7 @@ fn cmd_check(names: &[String], root_flag: Option<&str>, json: bool) -> Result<()
     if !lock_path.exists() {
         anyhow::bail!("no lockfile");
     }
-    let data = std::fs::read(&lock_path)?;
-    let lf: lock::Lockfile = serde_json::from_slice(&data)?;
+    let lf = lock::Lockfile::load(&lock_path)?;
     let target_names: Vec<String> = if names.is_empty() {
         lf.skills.iter().map(|s| s.install_name.clone()).collect()
     } else {
@@ -270,8 +268,7 @@ fn cmd_status(names: &[String], root_flag: Option<&str>, json: bool) -> Result<(
     if !lock_path.exists() {
         anyhow::bail!("no lockfile");
     }
-    let data = std::fs::read(&lock_path)?;
-    let lf: lock::Lockfile = serde_json::from_slice(&data)?;
+    let lf = lock::Lockfile::load(&lock_path)?;
     let target_names: Vec<String> = if names.is_empty() {
         lf.skills.iter().map(|s| s.install_name.clone()).collect()
     } else {

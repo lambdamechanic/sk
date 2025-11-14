@@ -44,13 +44,7 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
     }
 
     let lock_path = project_root.join("skills.lock.json");
-    let mut lockfile = if lock_path.exists() {
-        let data =
-            fs::read(&lock_path).with_context(|| format!("reading {}", lock_path.display()))?;
-        serde_json::from_slice::<lock::Lockfile>(&data).context("parse lockfile")?
-    } else {
-        lock::Lockfile::empty_now()
-    };
+    let mut lockfile = lock::Lockfile::load_or_empty(&lock_path)?;
 
     let existing_idx = lockfile
         .skills

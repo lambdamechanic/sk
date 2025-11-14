@@ -39,7 +39,6 @@ fn precommit_fails_on_local_file_sources() {
         "repo": "repo",
         "skillPath": "skill"
       },
-      "ref": null,
       "commit": "deadbeef",
       "digest": "sha256:abc",
       "installedAt": "1970-01-01T00:00:00Z"
@@ -76,7 +75,6 @@ fn precommit_passes_on_remote_sources() {
         "repo": "r",
         "skillPath": "skill"
       },
-      "ref": null,
       "commit": "deadbeef",
       "digest": "sha256:abc",
       "installedAt": "1970-01-01T00:00:00Z"
@@ -110,7 +108,7 @@ fn precommit_treats_localhost_exact_only() {
     let body = r#"{
   "version": 1,
   "skills": [
-    {"installName":"s0","source":{"url":"https://localhost.example.com/o/r.git","host":"localhost.example.com","owner":"o","repo":"r","skillPath":"skill"},"ref":null,"commit":"deadbeef","digest":"sha256:abc","installedAt":"1970-01-01T00:00:00Z"}
+    {"installName":"s0","source":{"url":"https://localhost.example.com/o/r.git","host":"localhost.example.com","owner":"o","repo":"r","skillPath":"skill"},"commit":"deadbeef","digest":"sha256:abc","installedAt":"1970-01-01T00:00:00Z"}
   ],
   "generatedAt":"1970-01-01T00:00:00Z"
 }
@@ -139,8 +137,8 @@ fn precommit_flags_http_localhost_and_ssh_localhost() {
     let body = r#"{
   "version": 1,
   "skills": [
-    {"installName":"a","source":{"url":"https://localhost/o/r.git","host":"localhost","owner":"o","repo":"r","skillPath":"skill"},"ref":null,"commit":"deadbeef","digest":"sha256:abc","installedAt":"1970-01-01T00:00:00Z"},
-    {"installName":"b","source":{"url":"git@localhost:o/r.git","host":"localhost","owner":"o","repo":"r","skillPath":"skill"},"ref":null,"commit":"deadbeef","digest":"sha256:def","installedAt":"1970-01-01T00:00:00Z"}
+    {"installName":"a","source":{"url":"https://localhost/o/r.git","host":"localhost","owner":"o","repo":"r","skillPath":"skill"},"commit":"deadbeef","digest":"sha256:abc","installedAt":"1970-01-01T00:00:00Z"},
+    {"installName":"b","source":{"url":"git@localhost:o/r.git","host":"localhost","owner":"o","repo":"r","skillPath":"skill"},"commit":"deadbeef","digest":"sha256:def","installedAt":"1970-01-01T00:00:00Z"}
   ],
   "generatedAt":"1970-01-01T00:00:00Z"
 }
@@ -168,8 +166,8 @@ fn precommit_flags_scp_with_non_git_user_and_ipv6() {
     let body = r#"{
   "version": 1,
   "skills": [
-    {"installName":"a","source":{"url":"me@localhost:o/r.git","host":"localhost","owner":"o","repo":"r","skillPath":"skill"},"ref":null,"commit":"deadbeef","digest":"sha256:abc","installedAt":"1970-01-01T00:00:00Z"},
-    {"installName":"b","source":{"url":"user@[::1]:o/r.git","host":"[::1]","owner":"o","repo":"r","skillPath":"skill"},"ref":null,"commit":"deadbeef","digest":"sha256:def","installedAt":"1970-01-01T00:00:00Z"}
+    {"installName":"a","source":{"url":"me@localhost:o/r.git","host":"localhost","owner":"o","repo":"r","skillPath":"skill"},"commit":"deadbeef","digest":"sha256:abc","installedAt":"1970-01-01T00:00:00Z"},
+    {"installName":"b","source":{"url":"user@[::1]:o/r.git","host":"[::1]","owner":"o","repo":"r","skillPath":"skill"},"commit":"deadbeef","digest":"sha256:def","installedAt":"1970-01-01T00:00:00Z"}
   ],
   "generatedAt":"1970-01-01T00:00:00Z"
 }
@@ -192,8 +190,8 @@ fn precommit_flags_ssh_with_userinfo_and_ipv6() {
     let body = r#"{
   "version": 1,
   "skills": [
-    {"installName":"a","source":{"url":"ssh://me@localhost/o/r.git","host":"localhost","owner":"o","repo":"r","skillPath":"skill"},"ref":null,"commit":"deadbeef","digest":"sha256:abc","installedAt":"1970-01-01T00:00:00Z"},
-    {"installName":"b","source":{"url":"ssh://user@[::1]:2222/o/r.git","host":"[::1]","owner":"o","repo":"r","skillPath":"skill"},"ref":null,"commit":"deadbeef","digest":"sha256:def","installedAt":"1970-01-01T00:00:00Z"}
+    {"installName":"a","source":{"url":"ssh://me@localhost/o/r.git","host":"localhost","owner":"o","repo":"r","skillPath":"skill"},"commit":"deadbeef","digest":"sha256:abc","installedAt":"1970-01-01T00:00:00Z"},
+    {"installName":"b","source":{"url":"ssh://user@[::1]:2222/o/r.git","host":"[::1]","owner":"o","repo":"r","skillPath":"skill"},"commit":"deadbeef","digest":"sha256:def","installedAt":"1970-01-01T00:00:00Z"}
   ],
   "generatedAt":"1970-01-01T00:00:00Z"
 }
@@ -217,8 +215,8 @@ fn precommit_flags_scp_without_userinfo() {
     let body = r#"{
   "version": 1,
   "skills": [
-    {"installName":"a","source":{"url":"localhost/o/r.git","host":"localhost","owner":"o","repo":"r","skillPath":"skill"},"ref":null,"commit":"deadbeef","digest":"sha256:abc","installedAt":"1970-01-01T00:00:00Z"},
-    {"installName":"b","source":{"url":"[::1]:o/r.git","host":"[::1]","owner":"o","repo":"r","skillPath":"skill"},"ref":null,"commit":"deadbeef","digest":"sha256:def","installedAt":"1970-01-01T00:00:00Z"}
+    {"installName":"a","source":{"url":"localhost/o/r.git","host":"localhost","owner":"o","repo":"r","skillPath":"skill"},"commit":"deadbeef","digest":"sha256:abc","installedAt":"1970-01-01T00:00:00Z"},
+    {"installName":"b","source":{"url":"[::1]:o/r.git","host":"[::1]","owner":"o","repo":"r","skillPath":"skill"},"commit":"deadbeef","digest":"sha256:def","installedAt":"1970-01-01T00:00:00Z"}
   ],
   "generatedAt":"1970-01-01T00:00:00Z"
 }

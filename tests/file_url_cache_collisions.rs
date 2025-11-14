@@ -106,13 +106,11 @@ fn file_url_caches_do_not_collide() {
         "skills": [
             {
                 "installName": "s1",
-                "source": { "url": path_to_file_url(&bare1), "host": "local", "owner": "o", "repo": "r", "skillPath": "skill" },
-                "ref": null, "commit": "deadbeef", "digest": "sha256:1", "installedAt": "1970-01-01T00:00:00Z"
+                "source": { "url": path_to_file_url(&bare1), "host": "local", "owner": "o", "repo": "r", "skillPath": "skill" }, "commit": "deadbeef", "digest": "sha256:1", "installedAt": "1970-01-01T00:00:00Z"
             },
             {
                 "installName": "s2",
-                "source": { "url": path_to_file_url(&bare2), "host": "local", "owner": "o", "repo": "r", "skillPath": "skill" },
-                "ref": null, "commit": "deadbeef", "digest": "sha256:2", "installedAt": "1970-01-01T00:00:00Z"
+                "source": { "url": path_to_file_url(&bare2), "host": "local", "owner": "o", "repo": "r", "skillPath": "skill" }, "commit": "deadbeef", "digest": "sha256:2", "installedAt": "1970-01-01T00:00:00Z"
             }
         ],
         "generatedAt": "1970-01-01T00:00:00Z"

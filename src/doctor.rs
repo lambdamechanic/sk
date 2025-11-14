@@ -1,5 +1,5 @@
 use crate::{config, digest, git, lock, paths, skills};
-use anyhow::{Context, Result};
+use anyhow::Result;
 use chrono::Utc;
 use std::collections::HashSet;
 use std::fs;
@@ -15,8 +15,7 @@ pub fn run_doctor(apply: bool) -> Result<()> {
     // Respect configured install root (default ./skills)
     let cfg = config::load_or_default()?;
     let install_root = paths::resolve_project_path(&project_root, &cfg.default_root);
-    let data = fs::read(&lock_path)?;
-    let lf: lock::Lockfile = serde_json::from_slice(&data).context("parse lockfile")?;
+    let lf = lock::Lockfile::load(&lock_path)?;
     let mut had_issues = false;
     // Track exact lock entries to drop by a stable composite key to avoid
     // accidentally removing other entries that share the same installName.

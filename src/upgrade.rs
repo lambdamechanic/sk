@@ -20,8 +20,7 @@ pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
     if !lock_path.exists() {
         bail!("no lockfile found");
     }
-    let data = fs::read(&lock_path)?;
-    let mut lf: lock::Lockfile = serde_json::from_slice(&data).context("parse lockfile")?;
+    let mut lf = lock::Lockfile::load(&lock_path)?;
 
     // Select targets
     let all = args.target == "--all";

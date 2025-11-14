@@ -93,12 +93,7 @@ pub fn run_install(args: InstallArgs) -> Result<()> {
 
     // Update lockfile
     let lock_path = project_root.join("skills.lock.json");
-    let mut lf = if lock_path.exists() {
-        let data = fs::read(&lock_path)?;
-        serde_json::from_slice::<lock::Lockfile>(&data)?
-    } else {
-        lock::Lockfile::empty_now()
-    };
+    let mut lf = lock::Lockfile::load_or_empty(&lock_path)?;
 
     if lf.skills.iter().any(|s| s.install_name == install_name) {
         bail!("Lockfile already contains skill with installName '{install_name}'");

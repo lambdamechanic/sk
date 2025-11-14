@@ -195,7 +195,6 @@ fn update_is_cache_only_and_fetches() {
                     "repo": "r1",
                     "skillPath": "skill"
                 },
-                "ref": null,
                 "commit": v1,
                 "digest": "sha256:deadbeef",
                 "installedAt": "1970-01-01T00:00:00Z"
@@ -257,7 +256,6 @@ fn update_refreshes_default_branch_head() {
                     "repo": "rhead",
                     "skillPath": "skill"
                 },
-                "ref": null,
                 "commit": "deadbeef",
                 "digest": "sha256:1",
                 "installedAt": "1970-01-01T00:00:00Z"

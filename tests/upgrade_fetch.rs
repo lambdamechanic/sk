@@ -236,7 +236,6 @@ fn upgrade_fetches_cache_and_applies_without_update() {
         "skills":[{
             "installName":"s0",
             "source": {"url":file_url,"host":host,"owner":owner,"repo":repo,"skillPath":skill_path},
-            "ref": null,
             "commit": v1,
             "digest": digest_v1,
             "installedAt":"1970-01-01T00:00:00Z"
@@ -318,7 +317,7 @@ fn upgrade_handles_cross_device_rename_simulation() {
     let digest_v1 = digest_dir(&dest);
     let lock = serde_json::json!({
         "version":1,
-        "skills":[{"installName":"s0","source": {"url":file_url,"host":host,"owner":owner,"repo":repo,"skillPath":skill_path},"ref": null,"commit": v1,"digest": digest_v1,"installedAt":"1970-01-01T00:00:00Z"}],
+        "skills":[{"installName":"s0","source": {"url":file_url,"host":host,"owner":owner,"repo":repo,"skillPath":skill_path},"commit": v1,"digest": digest_v1,"installedAt":"1970-01-01T00:00:00Z"}],
         "generatedAt":"1970-01-01T00:00:00Z"
     });
     write(
@@ -416,8 +415,8 @@ fn upgrade_does_not_mutate_on_extract_failure() {
     let lock = serde_json::json!({
         "version":1,
         "skills":[
-            {"installName":"s0","source": {"url":file_url0,"host":host,"owner":owner,"repo":"r0","skillPath":"skill-0"},"ref": null,"commit": v1_0,"digest": dig0,"installedAt":"1970-01-01T00:00:00Z"},
-            {"installName":"s1","source": {"url":file_url1,"host":host,"owner":owner,"repo":"r1","skillPath":"skill-1"},"ref": null,"commit": v1_1,"digest": dig1,"installedAt":"1970-01-01T00:00:00Z"}
+            {"installName":"s0","source": {"url":file_url0,"host":host,"owner":owner,"repo":"r0","skillPath":"skill-0"},"commit": v1_0,"digest": dig0,"installedAt":"1970-01-01T00:00:00Z"},
+            {"installName":"s1","source": {"url":file_url1,"host":host,"owner":owner,"repo":"r1","skillPath":"skill-1"},"commit": v1_1,"digest": dig1,"installedAt":"1970-01-01T00:00:00Z"}
         ],
         "generatedAt":"1970-01-01T00:00:00Z"
     });
