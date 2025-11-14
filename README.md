@@ -159,7 +159,7 @@ cargo clippy --all-targets --all-features
 | `sk repo catalog <alias-or-repo> [--json]` | List every skill exposed by a cached repo before installing. |
 | `sk repo search <query> [--repo alias] [--json]` | Search all cached repos (or a single repo via `--repo`) for matching skills. |
 | `sk update` | Refresh cached repos (safe to run on CI). |
-| `sk upgrade [--all|<name>] [--dry-run]` | Copy newer commits into the repo and update the lockfile. |
+| `sk upgrade [--all or <name>] [--dry-run]` | Copy newer commits into the repo and update the lockfile. |
 | `sk template create <name> "<description>"` | Scaffold a new skill from the configured template into `skills/<name>`. |
 | `sk sync-back <name> [-m "..."]` | Push local edits (or brand-new skills) to the configured repo and auto-open a PR with `gh`. |
 | `sk doctor [name...] [--apply]` | Diagnose duplicates, missing caches, digest drift; with `--apply` rebuild installs, prune caches, drop orphaned lock entries. |
