@@ -23,13 +23,14 @@ pub fn run_doctor(apply: bool) -> Result<()> {
 
     fn lock_entry_key(s: &lock::LockSkill) -> String {
         // installName + full source identity + commit + digest ensures uniqueness
+        let spec = s.source.repo_spec();
         format!(
             "{}|{}|{}|{}|{}|{}|{}",
             s.install_name,
-            s.source.host,
-            s.source.owner,
-            s.source.repo,
-            s.source.skill_path,
+            spec.host,
+            spec.owner,
+            spec.repo,
+            s.source.skill_path(),
             s.commit,
             s.digest
         )
@@ -59,18 +60,19 @@ pub fn run_doctor(apply: bool) -> Result<()> {
                 install_dir.display()
             ));
             if apply {
+                let spec = s.source.repo_spec();
                 let cache_dir = paths::resolve_or_primary_cache_path(
-                    &s.source.url,
-                    &s.source.host,
-                    &s.source.owner,
-                    &s.source.repo,
+                    &spec.url,
+                    &spec.host,
+                    &spec.owner,
+                    &spec.repo,
                 );
                 if cache_dir.exists() && git::has_object(&cache_dir, &s.commit).unwrap_or(false) {
                     // attempt rebuild via archive
                     if let Err(e) = crate::install::extract_subdir_from_commit(
                         &cache_dir,
                         &s.commit,
-                        &s.source.skill_path,
+                        s.source.skill_path(),
                         &install_dir,
                     ) {
                         skill_messages.push(format!("  Rebuild failed: {e}"));
@@ -105,16 +107,13 @@ pub fn run_doctor(apply: bool) -> Result<()> {
             }
         }
         // cache presence
-        let cache_dir = paths::resolve_or_primary_cache_path(
-            &s.source.url,
-            &s.source.host,
-            &s.source.owner,
-            &s.source.repo,
-        );
+        let spec = s.source.repo_spec();
+        let cache_dir =
+            paths::resolve_or_primary_cache_path(&spec.url, &spec.host, &spec.owner, &spec.repo);
         referenced_caches.insert(cache_dir.clone());
         let mut upstream_update: Option<String> = None;
         if cache_dir.exists() {
-            if let Ok(branch) = git::detect_or_set_default_branch(&cache_dir, &s.source.url) {
+            if let Ok(branch) = git::detect_or_set_default_branch(&cache_dir, spec) {
                 let tip_ref = format!("refs/remotes/origin/{branch}");
                 if let Ok(new_sha) = git::rev_parse(&cache_dir, &tip_ref) {
                     if new_sha != s.commit {

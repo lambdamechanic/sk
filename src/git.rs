@@ -1,15 +1,42 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use gix_url as gurl;
+use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RepoSpec {
     pub url: String,
     pub host: String,
     pub owner: String,
     pub repo: String,
+}
+
+impl RepoSpec {
+    fn https_fallback(&self) -> Option<String> {
+        if self.host.is_empty()
+            || self.host == "local"
+            || self.owner.is_empty()
+            || self.repo.is_empty()
+        {
+            return None;
+        }
+        Some(format!(
+            "https://{}/{}/{}.git",
+            self.host, self.owner, self.repo
+        ))
+    }
+
+    fn clone_candidates(&self) -> Vec<String> {
+        let mut urls = vec![self.url.clone()];
+        if let Some(fallback) = self.https_fallback() {
+            if fallback != self.url {
+                urls.push(fallback);
+            }
+        }
+        urls
+    }
 }
 
 pub fn ensure_git_repo() -> Result<PathBuf> {
@@ -99,13 +126,28 @@ pub fn parse_repo_input(input: &str, https: bool, default_host: &str) -> Result<
 pub fn ensure_cached_repo(cache_dir: &Path, spec: &RepoSpec) -> Result<()> {
     if !cache_dir.exists() {
         std::fs::create_dir_all(cache_dir.parent().unwrap_or_else(|| Path::new(".")))?;
-        // clone
-        let status = Command::new("git")
-            .args(["clone", &spec.url, cache_dir.to_string_lossy().as_ref()])
-            .status()
-            .context("git clone failed")?;
-        if !status.success() {
-            bail!("git clone failed for {}", spec.url);
+        let mut clone_err: Option<anyhow::Error> = None;
+        let mut cloned = false;
+        for remote in spec.clone_candidates() {
+            let status = Command::new("git")
+                .args(["clone", &remote, cache_dir.to_string_lossy().as_ref()])
+                .status()
+                .context("git clone failed")?;
+            if status.success() {
+                cloned = true;
+                break;
+            } else {
+                clone_err = Some(anyhow::anyhow!(
+                    "git clone failed for {} (status {})",
+                    remote,
+                    status
+                ));
+            }
+        }
+        if !cloned {
+            return Err(
+                clone_err.unwrap_or_else(|| anyhow::anyhow!("git clone failed for {}", spec.url))
+            );
         }
     }
     // fetch --prune
@@ -190,17 +232,27 @@ fn set_origin_head(cache_dir: &Path, branch: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn refresh_default_branch(cache_dir: &Path, remote: &str) -> Result<String> {
-    let branch = query_remote_default_branch(remote)?;
-    set_origin_head(cache_dir, &branch)?;
-    Ok(branch)
+pub fn refresh_default_branch(cache_dir: &Path, spec: &RepoSpec) -> Result<String> {
+    let mut last_err: Option<anyhow::Error> = None;
+    for remote in spec.clone_candidates() {
+        match query_remote_default_branch(&remote) {
+            Ok(branch) => {
+                set_origin_head(cache_dir, &branch)?;
+                return Ok(branch);
+            }
+            Err(err) => {
+                last_err = Some(err);
+            }
+        }
+    }
+    Err(last_err.unwrap_or_else(|| anyhow!("unable to determine default branch for {}", spec.url)))
 }
 
-pub fn detect_or_set_default_branch(cache_dir: &Path, remote: &str) -> Result<String> {
+pub fn detect_or_set_default_branch(cache_dir: &Path, spec: &RepoSpec) -> Result<String> {
     if let Some(branch) = read_origin_head(cache_dir)? {
         return Ok(branch);
     }
-    refresh_default_branch(cache_dir, remote)
+    refresh_default_branch(cache_dir, spec)
 }
 
 pub fn rev_parse(cache_dir: &Path, rev: &str) -> Result<String> {

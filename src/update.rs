@@ -17,7 +17,8 @@ pub fn run_update() -> Result<()> {
     // gather unique repos by host/owner/repo/url
     let mut uniq = BTreeSet::new();
     for s in lf.skills {
-        uniq.insert((s.source.url, s.source.host, s.source.owner, s.source.repo));
+        let spec = s.source.repo_spec_owned();
+        uniq.insert((spec.url, spec.host, spec.owner, spec.repo));
     }
     if uniq.is_empty() {
         println!("Lockfile has no skills; update complete.");
@@ -33,7 +34,7 @@ pub fn run_update() -> Result<()> {
             repo: repo.clone(),
         };
         git::ensure_cached_repo(&cache_dir, &spec)?;
-        let default_branch = git::refresh_default_branch(&cache_dir, &url)?;
+        let default_branch = git::refresh_default_branch(&cache_dir, &spec)?;
         println!("Updated cache for {owner}/{repo} (default branch {default_branch})");
     }
     Ok(())

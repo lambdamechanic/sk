@@ -288,10 +288,7 @@ pub fn run_sync_back(args: SyncBackArgs) -> Result<()> {
     let entry = lock::LockSkill {
         install_name: args.installed_name.to_string(),
         source: lock::Source {
-            url: target.spec.url.clone(),
-            host: target.spec.host.clone(),
-            owner: target.spec.owner.clone(),
-            repo: target.spec.repo.clone(),
+            spec: target.spec.clone(),
             skill_path: target.skill_path.clone(),
         },
         legacy_ref: None,
@@ -332,12 +329,7 @@ fn purge_children_except_git(dir: &std::path::Path) -> Result<()> {
 }
 
 fn build_existing_target(entry: lock::LockSkill, index: usize) -> Result<SyncTarget> {
-    let spec = git::RepoSpec {
-        url: entry.source.url.clone(),
-        host: entry.source.host.clone(),
-        owner: entry.source.owner.clone(),
-        repo: entry.source.repo.clone(),
-    };
+    let spec = entry.source.repo_spec_owned();
     let cache_dir =
         paths::resolve_or_primary_cache_path(&spec.url, &spec.host, &spec.owner, &spec.repo);
     git::ensure_cached_repo(&cache_dir, &spec)?;
@@ -345,15 +337,15 @@ fn build_existing_target(entry: lock::LockSkill, index: usize) -> Result<SyncTar
         bail!(
             "locked commit {} missing in cache for {}/{}. Run 'sk update' or 'sk doctor --apply' first.",
             &entry.commit[..7],
-            &entry.source.owner,
-            &entry.source.repo
+            &spec.owner,
+            &spec.repo
         );
     }
     Ok(SyncTarget {
         spec,
         cache_dir,
         commit: entry.commit.clone(),
-        skill_path: entry.source.skill_path.clone(),
+        skill_path: entry.source.skill_path().to_string(),
         lock_index: Some(index),
     })
 }
@@ -375,7 +367,7 @@ fn build_new_target(
     let cache_dir =
         paths::resolve_or_primary_cache_path(&spec.url, &spec.host, &spec.owner, &spec.repo);
     git::ensure_cached_repo(&cache_dir, &spec)?;
-    let default_branch = git::detect_or_set_default_branch(&cache_dir, &spec.url)?;
+    let default_branch = git::detect_or_set_default_branch(&cache_dir, &spec)?;
     let commit = git::rev_parse(&cache_dir, &format!("refs/remotes/origin/{default_branch}"))?;
     let skill_path = skill_path_flag
         .map(normalize_skill_path)

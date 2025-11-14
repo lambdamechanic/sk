@@ -13,12 +13,15 @@ pub fn run_precommit(allow_local: bool) -> Result<()> {
 
     let mut local_entries: Vec<String> = vec![];
     for s in &lf.skills {
-        let url = s.source.url.as_str();
-        let is_local = is_local_source(url, &s.source.host);
+        let spec = s.source.repo_spec();
+        let url = spec.url.as_str();
+        let is_local = is_local_source(url, &spec.host);
         if is_local {
             local_entries.push(format!(
                 "{} -> {} (path: {})",
-                s.install_name, url, s.source.skill_path
+                s.install_name,
+                url,
+                s.source.skill_path()
             ));
         }
     }
