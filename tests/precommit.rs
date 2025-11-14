@@ -1,23 +1,12 @@
 use assert_cmd::cargo::cargo_bin_cmd;
 use predicates::str::contains;
 use std::fs;
-use std::path::Path;
-use std::process::Command;
 use tempfile::tempdir;
 
-fn git(args: &[&str], cwd: &Path) {
-    let status = Command::new("git")
-        .args(args)
-        .current_dir(cwd)
-        .status()
-        .unwrap();
-    assert!(
-        status.success(),
-        "git {:?} failed in {}",
-        args,
-        cwd.display()
-    );
-}
+#[path = "support/mod.rs"]
+mod support;
+
+use support::git;
 
 #[test]
 fn precommit_fails_on_local_file_sources() {

@@ -1,23 +1,13 @@
 use assert_cmd::cargo::cargo_bin_cmd;
 use serde_json::Value as Json;
 use std::fs;
-use std::path::Path;
 use std::process::Command;
 use tempfile::tempdir;
 
-fn git(args: &[&str], cwd: &Path) {
-    let status = Command::new("git")
-        .args(args)
-        .current_dir(cwd)
-        .status()
-        .unwrap();
-    assert!(
-        status.success(),
-        "git {:?} failed in {}",
-        args,
-        cwd.display()
-    );
-}
+#[path = "support/mod.rs"]
+mod support;
+
+use support::{git, path_to_file_url};
 
 #[test]
 fn install_from_file_url_writes_lock_and_files() {
@@ -62,30 +52,6 @@ fn install_from_file_url_writes_lock_and_files() {
     let project = root.join("project");
     fs::create_dir_all(&project).unwrap();
     git(&["init", "-b", "main"], &project);
-
-    // Cross-platform file:// URL for the bare repo
-    fn path_to_file_url(p: &Path) -> String {
-        #[cfg(windows)]
-        {
-            let s = p.to_string_lossy().replace('\\', "/");
-            // Drive letter path: C:/...
-            if s.len() >= 2 && s.as_bytes()[1] == b':' {
-                return format!("file:///{s}");
-            }
-            // UNC path starting with //server/share
-            if s.starts_with("//") {
-                return format!("file:{s}");
-            }
-            if s.starts_with('/') {
-                return format!("file://{s}");
-            }
-            format!("file:///{s}")
-        }
-        #[cfg(not(windows))]
-        {
-            format!("file://{}", p.to_string_lossy())
-        }
-    }
 
     // Run `sk install file:///... sfile --path skill` using a temp cache root
     let file_url = path_to_file_url(&bare);

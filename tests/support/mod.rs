@@ -4,10 +4,11 @@ use assert_cmd::cargo::cargo_bin_cmd;
 use assert_cmd::Command as AssertCommand;
 use serde::Deserialize;
 use serde_json::Value as Json;
+use sha2::{Digest, Sha256};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use tempfile::TempDir;
 
 pub fn git(args: &[&str], cwd: &Path) {
@@ -51,7 +52,7 @@ fn normalize_subdir(input: &str) -> String {
     }
 }
 
-fn path_to_file_url(p: &Path) -> String {
+pub fn path_to_file_url(p: &Path) -> String {
     #[cfg(windows)]
     {
         let s = p.to_string_lossy().replace('\\', "/");
@@ -70,6 +71,90 @@ fn path_to_file_url(p: &Path) -> String {
     {
         format!("file://{}", p.to_string_lossy())
     }
+}
+
+pub fn extract_subdir_from_commit(cache: &Path, commit: &str, subdir: &str, dest: &Path) {
+    fs::create_dir_all(dest).unwrap();
+    let strip = subdir.split('/').count().to_string();
+    let mut archive = Command::new("git")
+        .args([
+            "-C",
+            cache.to_str().unwrap(),
+            "archive",
+            "--format=tar",
+            commit,
+            subdir,
+        ])
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let stdout = archive.stdout.take().unwrap();
+    let status = Command::new("tar")
+        .args([
+            "-x",
+            "--strip-components",
+            &strip,
+            "-C",
+            dest.to_str().unwrap(),
+        ])
+        .stdin(stdout)
+        .status()
+        .unwrap();
+    assert!(
+        status.success(),
+        "tar extraction failed for {subdir} ({commit})"
+    );
+    let _ = archive.wait();
+}
+
+pub fn hashed_leaf(url: &str, repo: &str) -> String {
+    let h = Sha256::digest(url.as_bytes());
+    let hex = format!("{h:x}");
+    let short = &hex[..12];
+    format!("{repo}-{short}")
+}
+
+pub fn cache_repo_path(
+    cache_root: &Path,
+    host: &str,
+    owner: &str,
+    repo: &str,
+    url_for_lock: &str,
+) -> PathBuf {
+    let leaf = if host == "local" && url_for_lock.starts_with("file://") {
+        hashed_leaf(url_for_lock, repo)
+    } else {
+        repo.to_string()
+    };
+    cache_root.join("repos").join(host).join(owner).join(leaf)
+}
+
+pub struct CacheRepoSpec<'a> {
+    pub host: &'a str,
+    pub owner: &'a str,
+    pub name: &'a str,
+    pub url_for_lock: &'a str,
+}
+
+pub fn clone_into_cache(cache_root: &Path, spec: CacheRepoSpec<'_>, bare_remote: &Path) -> PathBuf {
+    let dest = cache_repo_path(
+        cache_root,
+        spec.host,
+        spec.owner,
+        spec.name,
+        spec.url_for_lock,
+    );
+    fs::create_dir_all(dest.parent().unwrap()).unwrap();
+    git(
+        &[
+            "clone",
+            bare_remote.to_str().unwrap(),
+            dest.to_str().unwrap(),
+        ],
+        dest.parent().unwrap(),
+    );
+    git(&["remote", "set-head", "origin", "-a"], &dest);
+    dest
 }
 
 pub struct RemoteRepo {

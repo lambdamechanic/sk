@@ -1,0 +1,71 @@
+mod apply;
+mod fsops;
+mod plan;
+
+use crate::{config, git, lock, paths};
+use anyhow::{bail, Context, Result};
+use apply::{apply_staged_upgrades, apply_updates_to_lockfile, print_skipped, stage_upgrades};
+use plan::{build_upgrade_plan, resolve_targets, UpgradePlanResult};
+use tempfile::TempDir;
+
+pub struct UpgradeArgs<'a> {
+    pub target: &'a str, // installed name or "--all"
+    pub root: Option<&'a str>,
+    pub dry_run: bool,
+}
+
+pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
+    let project_root = git::ensure_git_repo()?;
+    let cfg = config::load_or_default()?;
+    let install_root_rel = args.root.unwrap_or(&cfg.default_root);
+    let install_root = paths::resolve_project_path(&project_root, install_root_rel);
+
+    let lock_path = project_root.join("skills.lock.json");
+    if !lock_path.exists() {
+        bail!("no lockfile found");
+    }
+    let mut lf = lock::Lockfile::load(&lock_path)?;
+
+    let targets = resolve_targets(&lf, &args)?;
+    let upgrading_all = args.target == "--all";
+    let UpgradePlanResult {
+        tasks: plan,
+        skipped: skipped_modified,
+    } = build_upgrade_plan(&targets, &install_root, upgrading_all)?;
+
+    if args.dry_run {
+        for task in &plan {
+            if let Some(skill) = targets.iter().find(|s| s.install_name == task.install_name) {
+                println!(
+                    "{}: {} -> {}",
+                    task.install_name,
+                    &skill.commit[..7],
+                    &task.new_commit[..7]
+                );
+            }
+        }
+        if upgrading_all {
+            print_skipped(&skipped_modified);
+        }
+        return Ok(());
+    }
+
+    if plan.is_empty() {
+        if upgrading_all {
+            print_skipped(&skipped_modified);
+        }
+        return Ok(());
+    }
+
+    let staging = TempDir::new_in(&project_root).context("create staging dir")?;
+    let staged = stage_upgrades(staging.path(), &plan)?;
+    let updates = apply_staged_upgrades(&staged)?;
+    apply_updates_to_lockfile(&mut lf, &updates)?;
+    lock::save_lockfile(&lock_path, &lf)?;
+
+    if upgrading_all {
+        print_skipped(&skipped_modified);
+    }
+
+    Ok(())
+}

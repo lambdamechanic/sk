@@ -5,19 +5,10 @@ use std::path::Path;
 use std::process::Command;
 use tempfile::tempdir;
 
-fn git(args: &[&str], cwd: &Path) {
-    let status = Command::new("git")
-        .args(args)
-        .current_dir(cwd)
-        .status()
-        .unwrap();
-    assert!(
-        status.success(),
-        "git {:?} failed in {}",
-        args,
-        cwd.display()
-    );
-}
+#[path = "support/mod.rs"]
+mod support;
+
+use support::{git, hashed_leaf};
 
 fn write(path: &Path, contents: &str) {
     if let Some(p) = path.parent() {
@@ -28,14 +19,6 @@ fn write(path: &Path, contents: &str) {
 
 fn digest_dir(dir: &Path) -> String {
     sk::digest::digest_dir(dir).expect("compute digest")
-}
-
-fn hashed_leaf(url: &str, repo: &str) -> String {
-    use sha2::{Digest, Sha256};
-    let h = Sha256::digest(url.as_bytes());
-    let hex = format!("{h:x}");
-    let short = &hex[..12];
-    format!("{repo}-{short}")
 }
 
 #[test]

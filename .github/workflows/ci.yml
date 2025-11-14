@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [ main ]
 
+env:
+  QLTY_VERSION: 0.588.0
+
 jobs:
   linux:
     name: ubuntu - fmt + clippy + build + test
@@ -23,6 +26,17 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
+
+      - name: Cache qlty CLI
+        uses: actions/cache@v4
+        with:
+          path: ~/.qlty
+          key: ${{ runner.os }}-qlty-${{ env.QLTY_VERSION }}
+
+      - name: Install qlty CLI
+        run: |
+          ./scripts/install-qlty.sh
+          echo "$HOME/.qlty/bin" >> "$GITHUB_PATH"
 
       - name: Precommit (fmt + clippy)
         run: make precommit
@@ -110,3 +124,67 @@ jobs:
         with:
           name: lcov.info
           path: lcov.info
+
+  qlty-advisory:
+    name: qlty (advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache qlty CLI
+        uses: actions/cache@v4
+        with:
+          path: ~/.qlty
+          key: ${{ runner.os }}-qlty-${{ env.QLTY_VERSION }}
+
+      - name: Install qlty CLI
+        run: |
+          ./scripts/install-qlty.sh
+          echo "$HOME/.qlty/bin" >> "$GITHUB_PATH"
+
+      - name: Run qlty check (advisory)
+        run: qlty check --all --summary --no-upgrade-check --no-fail
+
+      - name: Upload qlty results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qlty-results
+          path: |
+            .qlty/out
+            .qlty/results
+          if-no-files-found: ignore
+
+  qlty-smells:
+    name: qlty smells (advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache qlty CLI
+        uses: actions/cache@v4
+        with:
+          path: ~/.qlty
+          key: ${{ runner.os }}-qlty-${{ env.QLTY_VERSION }}
+
+      - name: Install qlty CLI
+        run: |
+          ./scripts/install-qlty.sh
+          echo "$HOME/.qlty/bin" >> "$GITHUB_PATH"
+
+      - name: Run qlty smells (advisory)
+        run: qlty smells --all --no-upgrade-check
+
+      - name: Upload qlty smells results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qlty-smells-results
+          path: |
+            .qlty/out
+            .qlty/results
+          if-no-files-found: ignore
