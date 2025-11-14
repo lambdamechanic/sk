@@ -31,7 +31,18 @@ description: "How to use the repo-scoped sk CLI to manage Claude Skills in this 
    ```bash
    target/debug/sk sync-back <name> --message "Describe the change"
    ```
-   This creates a temp branch in the cached repo, copies your edited skill directory, commits, and pushes. Use the printed `gh pr create --fill --head ...` hint to open a PR on `lambdamechanic/skills`.
+   This creates a temp branch in the cached repo, copies your edited skill directory, commits, and pushes. On success `sk` runs `gh` for you: it auto-opens a PR, enables auto-merge when GitHub reports the branch is clean, and prints the PR URL (or a conflict warning) so you can follow up if automation gets blocked. If the GitHub CLI is missing or the repo isn’t reachable via GitHub, you’ll see a skip notice and can run `gh pr create` manually.
+
+   **PR automation tips**
+
+   - Run `gh auth status` once per machine to ensure the GitHub CLI is logged in; `sk` will reuse your credentials.
+   - After the push, watch the terminal output:
+     - `Opened PR …` (or `Reusing PR …`) links to the branch that was just published.
+     - `Auto-merge armed…` means GitHub will land it once checks pass; otherwise you’ll see `Auto-merge blocked…` with a link to fix conflicts manually.
+     - `Auto-merge skipped…` appears when checks can’t be armed (e.g., required approvals disabled); click through and finish by hand.
+   - When `gh` is missing or unauthenticated you’ll see “Skipping PR automation …”; install/auth and rerun `sk sync-back` to finish the upload.
+   - Automation currently uses GitHub’s standard `--merge` strategy; if your repo enforces `--squash`/`--rebase`, turn off auto-merge in the UI and land it manually after review.
+   - If your PR output says `enablePullRequestAutoMerge`, run `gh repo edit <owner>/<repo> --enable-auto-merge` (or visit the repo’s Settings → General page) once to flip the toggle.
 5. **Publish a brand-new skill** that doesn’t exist upstream yet:
    ```bash
    target/debug/sk sync-back <name> \

@@ -153,7 +153,7 @@ sk config get|set <key> [value]  # per-user config (~/.config/sk/config.json)
 
   * In the cached clone, create a branch based at the locked commit.
   * Rsync the installed dir over the skill subdir path, commit with message, push to origin.
-  * Print a ready-to-run `gh pr create` suggestion.
+  * After pushing, call `gh` to auto-open a PR, arm auto-merge when the branch is clean, and surface the PR URL (or a conflict warning) so humans only take over when automation can’t finish.
 * If source is not writable (push denied), suggest `fork` (outside the scope of this CLI).
 
 ### `sk doctor`
