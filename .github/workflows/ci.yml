@@ -27,6 +27,17 @@ jobs:
         with:
           cache-on-failure: true
 
+      - name: Cache qlty CLI
+        uses: actions/cache@v4
+        with:
+          path: ~/.qlty
+          key: ${{ runner.os }}-qlty-${{ env.QLTY_VERSION }}
+
+      - name: Install qlty CLI
+        run: |
+          ./scripts/install-qlty.sh
+          echo "$HOME/.qlty/bin" >> "$GITHUB_PATH"
+
       - name: Precommit (fmt + clippy)
         run: make precommit
 
