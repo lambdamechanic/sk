@@ -117,7 +117,7 @@ impl DoctorState {
             }
         }
 
-        let upstream_update = update::compute_upstream_update(&cache_dir, &spec, &skill.commit);
+        let upstream_update = update::compute_upstream_update(&cache_dir, spec, &skill.commit);
         if !cache_dir.exists() {
             report.add_issue(format!("- Cache clone missing: {}", cache_dir.display()));
         } else if !git::has_object(&cache_dir, &skill.commit).unwrap_or(false) {

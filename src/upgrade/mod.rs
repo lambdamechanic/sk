@@ -5,7 +5,7 @@ mod plan;
 use crate::{config, git, lock, paths};
 use anyhow::{bail, Context, Result};
 use apply::{apply_staged_upgrades, apply_updates_to_lockfile, print_skipped, stage_upgrades};
-use plan::{build_upgrade_plan, resolve_targets};
+use plan::{build_upgrade_plan, resolve_targets, UpgradePlanResult};
 use tempfile::TempDir;
 
 pub struct UpgradeArgs<'a> {
@@ -28,7 +28,10 @@ pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
 
     let targets = resolve_targets(&lf, &args)?;
     let upgrading_all = args.target == "--all";
-    let (plan, skipped_modified) = build_upgrade_plan(&targets, &install_root, upgrading_all)?;
+    let UpgradePlanResult {
+        tasks: plan,
+        skipped: skipped_modified,
+    } = build_upgrade_plan(&targets, &install_root, upgrading_all)?;
 
     if args.dry_run {
         for task in &plan {

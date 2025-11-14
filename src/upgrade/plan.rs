@@ -18,6 +18,23 @@ pub struct StagedUpgrade {
     pub new_digest: String,
 }
 
+#[derive(Clone)]
+pub struct UpgradeSpan {
+    pub current: String,
+    pub available: String,
+}
+
+#[derive(Clone)]
+pub struct SkippedUpgrade {
+    pub install_name: String,
+    pub span: Option<UpgradeSpan>,
+}
+
+pub struct UpgradePlanResult {
+    pub tasks: Vec<UpgradeTask>,
+    pub skipped: Vec<SkippedUpgrade>,
+}
+
 pub fn resolve_targets(lf: &lock::Lockfile, args: &UpgradeArgs) -> Result<Vec<lock::LockSkill>> {
     if args.target == "--all" {
         Ok(lf.skills.clone())
@@ -39,7 +56,7 @@ pub fn build_upgrade_plan(
     targets: &[lock::LockSkill],
     install_root: &Path,
     allow_skip_dirty: bool,
-) -> Result<(Vec<UpgradeTask>, Vec<(String, Option<(String, String)>)>)> {
+) -> Result<UpgradePlanResult> {
     let mut plan = Vec::new();
     let mut skipped = Vec::new();
     for skill in targets {
@@ -65,8 +82,14 @@ pub fn build_upgrade_plan(
 
         if is_modified {
             if allow_skip_dirty {
-                let span = needs_upgrade.then(|| (skill.commit.clone(), new_commit.clone()));
-                skipped.push((skill.install_name.clone(), span));
+                let span = needs_upgrade.then(|| UpgradeSpan {
+                    current: skill.commit.clone(),
+                    available: new_commit.clone(),
+                });
+                skipped.push(SkippedUpgrade {
+                    install_name: skill.install_name.clone(),
+                    span,
+                });
                 continue;
             } else {
                 bail!(
@@ -85,5 +108,8 @@ pub fn build_upgrade_plan(
             });
         }
     }
-    Ok((plan, skipped))
+    Ok(UpgradePlanResult {
+        tasks: plan,
+        skipped,
+    })
 }

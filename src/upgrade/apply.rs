@@ -1,5 +1,5 @@
 use super::fsops::copy_dir_all;
-use super::plan::{StagedUpgrade, UpgradeTask};
+use super::plan::{SkippedUpgrade, StagedUpgrade, UpgradeTask};
 use crate::{digest, install, lock};
 use anyhow::{anyhow, bail, Context, Result};
 use chrono::Utc;
@@ -131,20 +131,23 @@ pub fn apply_updates_to_lockfile(
     Ok(())
 }
 
-pub fn print_skipped(skipped: &[(String, Option<(String, String)>)]) {
+pub fn print_skipped(skipped: &[SkippedUpgrade]) {
     if skipped.is_empty() {
         return;
     }
     println!("Skipped {} skill(s) with local edits:", skipped.len());
-    for (name, span) in skipped {
-        match span {
-            Some((old, new)) => println!(
+    for entry in skipped {
+        match &entry.span {
+            Some(span) => println!(
                 "- {name}: local edits plus upstream update ({} -> {}). Run 'sk sync-back {name}' or revert changes, then rerun 'sk upgrade {name}'.",
-                short_sha(old),
-                short_sha(new)
+                short_sha(&span.current),
+                short_sha(&span.available),
+                name = entry.install_name
             ),
             None => println!(
                 "- {name}: local edits (already at locked commit). Run 'sk sync-back {name}' or revert changes before upgrading."
+                ,
+                name = entry.install_name
             ),
         }
     }
