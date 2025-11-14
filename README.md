@@ -29,10 +29,10 @@ sk repo list
 ```
 Example `sk repo list` output:
 ```
-ALIAS       REPO                                BRANCH
-anthropic   github.com/anthropics/skills        main
+ALIAS       REPO                                SKILLS  INSTALLED
+anthropic   github.com/anthropics/skills        120     3
 ```
-Caching writes to `skills.repos.json` so teammates inherit the catalog.
+`SKILLS` counts everything in the catalog; `INSTALLED` shows how many of those helpers already live under `./skills`. Caching writes to `skills.repos.json` so teammates inherit the catalog.
 
 ### 3. Install a few canonical skills
 ```bash

@@ -54,7 +54,7 @@ cargo clippy --all-targets --all-features
 | `sk check [name...] [--json]` | Quick OK/modified/missing status for installs. |
 | `sk status [name...] [--json]` | Compare digests plus show upstream tip (`old -> new`). |
 | `sk repo add <repo> [--alias foo]` | Cache a remote repo (and record it in `skills.repos.json`) without installing a skill yet. |
-| `sk repo list [--json]` | Show cached repos and their aliases. |
+| `sk repo list [--json]` | Show cached repos plus total skills vs. installed counts (`--json` prints the raw registry). |
 | `sk repo catalog <alias-or-repo> [--json]` | List every skill exposed by a cached repo before installing. |
 | `sk repo search <query> [--repo alias] [--json]` | Search all cached repos (or a single repo via `--repo`) for matching skills. |
 | `sk update` | Refresh cached repos (safe to run on CI). |
