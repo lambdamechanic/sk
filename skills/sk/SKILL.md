@@ -31,11 +31,14 @@ description: "How to use the repo-scoped sk CLI to manage Claude Skills in this 
    ```bash
    target/debug/sk sync-back <name> --message "Describe the change"
    ```
-   This creates a temp branch in the cached repo, copies your edited skill directory, commits, and pushes. On success `sk` runs `gh` for you: it auto-opens a PR, enables auto-merge when GitHub reports the branch is clean, and prints the PR URL (or a conflict warning) so you can follow up if automation gets blocked. If the GitHub CLI is missing or the repo isn’t reachable via GitHub, you’ll see a skip notice and can run `gh pr create` manually.
+   Once `sk config set default_repo <repo>` is configured, `sk sync-back <name>` automatically targets that repo, uses `<name>` for the skill-path, and generates `sk/sync/<name>/<timestamp>` branches so the quickstart `-m` flag is the only required argument. Supply `--repo` / `--skill-path` only when you need to override the defaults.
+
+   This creates a temp branch in the cached repo, copies your edited skill directory, commits, and pushes. On success `sk` runs `gh` for you: it auto-opens a PR, enables auto-merge when GitHub reports the branch is clean, and prints the PR URL (or a conflict warning) so you can follow up if automation gets blocked. If the GitHub CLI is missing or the repo isn’t reachable via GitHub, you’ll see a warning plus manual PR instructions and can run `gh pr create` yourself once available.
 
    **PR automation tips**
 
    - Run `gh auth status` once per machine to ensure the GitHub CLI is logged in; `sk` will reuse your credentials.
+   - Missing `rsync` prints a warning and falls back to a recursive copy before committing; install `rsync` to keep large skills fast.
    - After the push, watch the terminal output:
      - `Opened PR …` (or `Reusing PR …`) links to the branch that was just published.
      - `Auto-merge armed…` means GitHub will land it once checks pass; otherwise you’ll see `Auto-merge blocked…` with a link to fix conflicts manually.
@@ -50,7 +53,7 @@ description: "How to use the repo-scoped sk CLI to manage Claude Skills in this 
      --skill-path <subdir> \
      --message "Add <name> skill"
    ```
-   Provide the repo (`--repo`) and destination subdirectory (`--skill-path`). `sk` clones that repo, branches from the default tip (or your custom `--branch`), copies your local folder, pushes, and rewrites `skills.lock.json` with the exact commit SHA/digest so status checks stay clean. You will always see the temporary branch name in the CLI output, e.g. `Pushed branch 'sk/sync/<name>/<timestamp>' …`, even though that branch is meant to be merged and deleted once the upstream PR lands.
+   Provide `--repo` / `--skill-path` only if you need something other than the configured defaults. `sk` clones that repo, branches from the default tip (or your custom `--branch`), copies your local folder, pushes, and rewrites `skills.lock.json` with the exact commit SHA/digest so status checks stay clean. You will always see the temporary branch name in the CLI output, e.g. `Pushed branch 'sk/sync/<name>/<timestamp>' …`, even though that branch is meant to be merged and deleted once the upstream PR lands.
 
 ### Example: publishing `sk`
 

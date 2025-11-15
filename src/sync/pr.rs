@@ -20,9 +20,10 @@ pub(super) fn automate_pr_flow(
     branch_name: &str,
     spec: &git::RepoSpec,
 ) -> Result<Option<PrAutomationReport>> {
-    if which::which("gh").is_err() {
-        println!(
-            "Skipping PR automation: 'gh' CLI not found. Install https://cli.github.com/ to auto-open PRs."
+    let gh_missing = env::var_os("SK_FORCE_GH_MISSING").is_some() || which::which("gh").is_err();
+    if gh_missing {
+        eprintln!(
+            "Warning: skipping PR automation because the GitHub CLI ('gh') is unavailable. Push completed; open a PR manually or install gh from https://cli.github.com/."
         );
         return Ok(None);
     }

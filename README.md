@@ -56,6 +56,7 @@ sk template create retro-template "Retro two-column recap template"
 sk doctor
 sk sync-back frontend-design -m "Revise guidance tone"
 ```
+`sk sync-back` looks up the push target from `sk config get default_repo`, mirrors `skills/frontend-design` into a temporary branch named `sk/sync/frontend-design/<timestamp>`, and opens a PR automatically unless you override the repo/path flags yourself.
 
 ### 7. Stay up to date
 ```bash

@@ -50,15 +50,28 @@ impl<'a> SyncSession<'a> {
         }
         let lock_path = project_root.join("skills.lock.json");
         let lockfile = lock::Lockfile::load_or_empty(&lock_path)?;
-        let target = if let Some(idx) = lockfile
+        let lock_index = lockfile
             .skills
             .iter()
-            .position(|s| s.install_name == args.installed_name)
-        {
+            .position(|s| s.install_name == args.installed_name);
+        let target = if let Some(idx) = lock_index {
             build_existing_target(lockfile.skills[idx].clone(), idx)?
         } else {
+            let repo_value = match args.repo {
+                Some(raw) if !raw.trim().is_empty() => raw.trim().to_string(),
+                _ => {
+                    let trimmed = cfg.default_repo.trim();
+                    if trimmed.is_empty() {
+                        bail!(
+                            "default_repo is not configured. Run 'sk config set default_repo <repo>' or pass --repo <target> when calling 'sk sync-back {}'.",
+                            args.installed_name
+                        );
+                    }
+                    trimmed.to_string()
+                }
+            };
             build_new_target(
-                args.repo,
+                &repo_value,
                 args.skill_path,
                 args.installed_name,
                 args.https,
@@ -132,7 +145,8 @@ impl<'a> SyncSession<'a> {
         if let Some(parent) = target_subdir.parent() {
             fs::create_dir_all(parent).ok();
         }
-        if which::which("rsync").is_ok() {
+        let force_missing_rsync = env::var_os("SK_FORCE_RSYNC_MISSING").is_some();
+        if !force_missing_rsync && which::which("rsync").is_ok() {
             fs::create_dir_all(&target_subdir)?;
             run(
                 Command::new("rsync").args([
@@ -149,6 +163,10 @@ impl<'a> SyncSession<'a> {
                 "rsync contents",
             )?
         } else {
+            eprintln!(
+                "Warning: 'rsync' not found; falling back to a recursive copy for '{}'. Install rsync for faster sync-back runs.",
+                self.args.installed_name
+            );
             let is_root =
                 self.target.skill_path.trim().is_empty() || self.target.skill_path.trim() == ".";
             if target_subdir.exists() {
