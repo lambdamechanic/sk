@@ -5,6 +5,7 @@ pub mod doctor;
 pub mod git;
 pub mod install;
 pub mod lock;
+pub mod mcp;
 pub mod paths;
 pub mod remove;
 pub mod repo;

@@ -5,6 +5,7 @@ mod doctor;
 mod git;
 mod install;
 mod lock;
+mod mcp;
 mod paths;
 mod precommit;
 mod remove;
@@ -74,6 +75,7 @@ fn main() -> Result<()> {
         Commands::Template { cmd } => cmd_template(cmd),
         Commands::Repo { cmd } => cmd_repo(cmd),
         Commands::Precommit { allow_local } => precommit::run_precommit(allow_local),
+        Commands::McpServer { root } => mcp::run_server(root.as_deref()),
         Commands::Install {
             repo,
             skill_name,

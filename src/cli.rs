@@ -123,6 +123,14 @@ pub enum Commands {
         #[arg(long, help = "Allow local file:// sources without failing")]
         allow_local: bool,
     },
+    #[command(about = "Run the repo-scoped MCP skills server over stdio")]
+    McpServer {
+        #[arg(
+            long,
+            help = "Override the skills root (defaults to sk config default_root)"
+        )]
+        root: Option<String>,
+    },
 }
 
 #[derive(Subcommand, Debug)]
