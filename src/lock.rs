@@ -43,10 +43,6 @@ impl Source {
         self.spec.clone()
     }
 
-    pub fn repo_name(&self) -> &str {
-        &self.spec.repo
-    }
-
     pub fn skill_path(&self) -> &str {
         &self.skill_path
     }
