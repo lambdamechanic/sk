@@ -13,7 +13,7 @@ use tempfile::TempDir;
 
 use fs_utils::{mirror_dir, purge_children_except_git, refresh_install_from_commit};
 use pr::{automate_pr_flow, maybe_wait_for_auto_merge, PrAutomationReport};
-use target::{build_target_for_repo, SyncTarget};
+use target::{build_existing_target, build_new_target, SyncTarget};
 
 pub struct SyncBackArgs<'a> {
     pub installed_name: &'a str,
@@ -54,27 +54,30 @@ impl<'a> SyncSession<'a> {
             .skills
             .iter()
             .position(|s| s.install_name == args.installed_name);
-        let repo_value = match args.repo {
-            Some(raw) if !raw.trim().is_empty() => raw.trim().to_string(),
-            _ => {
-                let trimmed = cfg.default_repo.trim();
-                if trimmed.is_empty() {
-                    bail!(
-                        "default_repo is not configured. Run 'sk config set default_repo <repo>' or pass --repo <target> when calling 'sk sync-back {}'.",
-                        args.installed_name
-                    );
+        let target = if let Some(idx) = lock_index {
+            build_existing_target(lockfile.skills[idx].clone(), idx)?
+        } else {
+            let repo_value = match args.repo {
+                Some(raw) if !raw.trim().is_empty() => raw.trim().to_string(),
+                _ => {
+                    let trimmed = cfg.default_repo.trim();
+                    if trimmed.is_empty() {
+                        bail!(
+                            "default_repo is not configured. Run 'sk config set default_repo <repo>' or pass --repo <target> when calling 'sk sync-back {}'.",
+                            args.installed_name
+                        );
+                    }
+                    trimmed.to_string()
                 }
-                trimmed.to_string()
-            }
+            };
+            build_new_target(
+                &repo_value,
+                args.skill_path,
+                args.installed_name,
+                args.https,
+                &cfg,
+            )?
         };
-        let target = build_target_for_repo(
-            &repo_value,
-            args.skill_path,
-            args.installed_name,
-            args.https,
-            &cfg,
-            lock_index,
-        )?;
         let branch_name = args
             .branch
             .map(|b| b.to_string())

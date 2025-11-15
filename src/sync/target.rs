@@ -1,5 +1,5 @@
-use crate::{config, git, paths};
-use anyhow::Result;
+use crate::{config, git, lock, paths};
+use anyhow::{bail, Result};
 use std::path::PathBuf;
 
 pub(crate) struct SyncTarget {
@@ -10,13 +10,34 @@ pub(crate) struct SyncTarget {
     pub(crate) lock_index: Option<usize>,
 }
 
-pub(super) fn build_target_for_repo(
+pub(super) fn build_existing_target(entry: lock::LockSkill, index: usize) -> Result<SyncTarget> {
+    let spec = entry.source.repo_spec_owned();
+    let cache_dir =
+        paths::resolve_or_primary_cache_path(&spec.url, &spec.host, &spec.owner, &spec.repo);
+    git::ensure_cached_repo(&cache_dir, &spec)?;
+    if !git::has_object(&cache_dir, &entry.commit)? {
+        let short = &entry.commit[..entry.commit.len().min(7)];
+        bail!(
+            "locked commit {short} missing in cache for {}/{}. Run 'sk update' or 'sk doctor --apply' first.",
+            &spec.owner,
+            &spec.repo
+        );
+    }
+    Ok(SyncTarget {
+        spec,
+        cache_dir,
+        commit: entry.commit,
+        skill_path: entry.source.skill_path().to_string(),
+        lock_index: Some(index),
+    })
+}
+
+pub(super) fn build_new_target(
     repo_value: &str,
     skill_path_flag: Option<&str>,
     installed_name: &str,
     https: bool,
     cfg: &config::UserConfig,
-    lock_index: Option<usize>,
 ) -> Result<SyncTarget> {
     let prefer_https = https || cfg.protocol.eq_ignore_ascii_case("https");
     let spec = git::parse_repo_input(repo_value, prefer_https, &cfg.default_host)?;
@@ -33,7 +54,7 @@ pub(super) fn build_target_for_repo(
         cache_dir,
         commit,
         skill_path,
-        lock_index,
+        lock_index: None,
     })
 }
 
