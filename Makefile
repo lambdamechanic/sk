@@ -1,8 +1,8 @@
 ## Common dev tasks
 
 QLTY ?= qlty
-QLTY_FLAGS ?= --all --summary --no-upgrade-check
-QLTY_SMELLS_FLAGS ?= --all --no-upgrade-check
+QLTY_FLAGS ?= --all --summary
+QLTY_SMELLS_FLAGS ?= --all
 
 .PHONY: precommit fmt clippy qlty qlty-advisory qlty-smells qlty-smells-advisory
 

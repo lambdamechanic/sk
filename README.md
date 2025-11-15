@@ -97,6 +97,7 @@ sk precommit --allow-local   # warn-only (useful for experimentation)
 - `make precommit` now runs `cargo fmt`, `cargo clippy --all-targets --all-features`, strict `make qlty` (fails on any findings), and blocking `make qlty-smells`. Keep `$HOME/.qlty/bin` on your `PATH` so the make target can find the CLI.
 - Use `make qlty-advisory` when you only need warning-level results, or `make qlty-smells-advisory` for a warn-only smells pass. Both standard targets (`make qlty`, `make qlty-smells`) fail the build on issues and respect the flags in `QLTY_FLAGS`/`QLTY_SMELLS_FLAGS`.
 - GitHub Actions mirrors the same setup: both `qlty` and `qlty-smells` jobs are required, with artifacts `qlty-results` and `qlty-smells-results` respectively. Check those artifacts whenever CI fails.
+- Neither the Makefile nor CI suppress qlty's upgrade check anymore—expect the CLI to verify that your local CLI/plugins match upstream before linting. Keep outbound network enabled or set the `QLTY_UPGRADE_CHECK=0` env only when debugging failures (and restore it before committing).
 
 ## Installation options
 ### From crates.io (recommended)

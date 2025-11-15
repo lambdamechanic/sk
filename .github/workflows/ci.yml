@@ -144,7 +144,7 @@ jobs:
           echo "$HOME/.qlty/bin" >> "$GITHUB_PATH"
 
       - name: Run qlty check
-        run: qlty check --all --summary --no-upgrade-check
+        run: qlty check --all --summary
 
       - name: Upload qlty results
         if: always()
@@ -175,7 +175,7 @@ jobs:
           echo "$HOME/.qlty/bin" >> "$GITHUB_PATH"
 
       - name: Run qlty smells
-        run: qlty smells --all --no-upgrade-check
+        run: qlty smells --all
 
       - name: Upload qlty smells results
         if: always()
