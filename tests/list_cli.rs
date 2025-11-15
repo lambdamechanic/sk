@@ -36,7 +36,10 @@ fn list_prints_repo_and_description() {
     assert_eq!(arr.len(), 1);
     let entry = &arr[0];
     assert_eq!(entry["installName"], "demo");
-    assert_eq!(entry["repo"], format!("{}:{}", repo_url, remote.skill_path()));
+    assert_eq!(
+        entry["repo"],
+        format!("{}:{}", repo_url, remote.skill_path())
+    );
     assert_eq!(entry["skillPath"], "demo");
     assert_eq!(entry["description"], "fixture");
 }
