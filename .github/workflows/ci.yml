@@ -174,7 +174,7 @@ jobs:
           ./scripts/install-qlty.sh
           echo "$HOME/.qlty/bin" >> "$GITHUB_PATH"
 
-      - name: Run qlty smells (advisory)
+      - name: Run qlty smells
         run: qlty smells --all --no-upgrade-check
 
       - name: Upload qlty smells results
