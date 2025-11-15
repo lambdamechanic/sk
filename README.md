@@ -92,6 +92,12 @@ sk precommit --allow-local   # warn-only (useful for experimentation)
 - **GitHub CLI (`gh`)** — `sk sync-back` uses `gh pr list|create|merge` to open and auto-merge PRs. Without `gh`, the push still happens but you must open the PR manually.
 - Standard SSH credentials (default protocol) or HTTPS access tokens if you pass `--https`.
 
+## Contributing & qlty guardrails
+- Run `scripts/install-qlty.sh` once (and whenever `.qlty-version` changes) to install the pinned qlty CLI into `~/.qlty/bin`. The script honors `QLTY_VERSION`/`QLTY_INSTALL` if you need overrides.
+- `make precommit` now runs `cargo fmt`, `cargo clippy --all-targets --all-features`, strict `make qlty` (fails on any findings), and the advisory `make qlty-smells-advisory`. Keep `$HOME/.qlty/bin` on your `PATH` so the make target can find the CLI.
+- Use `make qlty-advisory` or `make qlty-smells` when you want to run individual checks outside the full suite. Both commands respect the flags in the `QLTY_FLAGS`/`QLTY_SMELLS_FLAGS` variables near the top of the `Makefile`.
+- GitHub Actions mirrors the same setup: the blocking `qlty` job collects findings under the `qlty-results` artifact, and `qlty-smells` uploads advisory duplicates/complexity output as `qlty-smells-results`. Check those artifacts whenever CI fails.
+
 ## Installation options
 ### From crates.io (recommended)
 ```bash
@@ -108,6 +114,8 @@ cargo build --release          # binary at target/release/sk
 
 Upgrade dependencies or lint locally:
 ```bash
+make precommit                 # fmt + clippy + qlty + advisory smells
+# or run pieces manually:
 cargo fmt --all
 cargo clippy --all-targets --all-features
 ```

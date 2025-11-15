@@ -6,7 +6,7 @@ QLTY_SMELLS_FLAGS ?= --all --no-upgrade-check
 
 .PHONY: precommit fmt clippy qlty qlty-advisory qlty-smells qlty-smells-advisory
 
-precommit: fmt clippy qlty-advisory qlty-smells-advisory
+precommit: fmt clippy qlty qlty-smells-advisory
 
 fmt:
 	cargo fmt --all --check
