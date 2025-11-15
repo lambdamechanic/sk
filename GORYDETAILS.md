@@ -20,7 +20,7 @@ sk repo catalog @anthropics/skills --json  # machine-readable listing for toolin
 ## `sk sync-back` internals
 After editing files under `skills/<name>`:
 1. The install directory is mirrored into a clean worktree of the cached repo under `~/.cache/sk/repos/...` (prefers `rsync -a --delete`, falls back to a recursive copy if `rsync` is unavailable).
-2. `sk` commits and pushes to the repo recorded in `skills.lock.json`. For brand-new skills, it falls back to `sk config get default_repo`.
+2. `sk` commits and pushes to the repo supplied via `--repo` or, when omitted, `sk config get default_repo`. The destination skill path defaults to the install name so `sk sync-back <name>` works with no extra flags once `default_repo` is set.
 3. Branches default to `sk/sync/<name>/<timestamp>`. `gh pr create` (and `gh pr merge` when auto-merge is armed) handles the review path. Missing `rsync` or `gh` triggers warnings but never aborts the publish.
 4. Upon success, `skills.lock.json` updates to the new commit and digest so teammates get the latest version immediately.
 

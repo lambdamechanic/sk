@@ -6,6 +6,166 @@ mod support;
 use support::{git, normalize_newlines, CliFixture, FakeGh};
 
 #[test]
+fn sync_back_defaults_to_config_repo_and_install_name() {
+    let fx = CliFixture::new();
+    fx.sk_success(&["init"]);
+
+    let personal = fx.create_remote("skills-default", ".", "placeholder");
+    let target_url = personal.file_url();
+    fx.sk_success(&["config", "set", "default_repo", target_url.as_str()]);
+
+    let skill_dir = fx.skill_dir("local-default");
+    fs::create_dir_all(&skill_dir).unwrap();
+    fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: local-default\ndescription: local\n---\n",
+    )
+    .unwrap();
+    fs::write(skill_dir.join("README.md"), "v1\n").unwrap();
+
+    let mut cmd = fx.sk_cmd();
+    cmd.env("SK_FORCE_GH_MISSING", "1").args([
+        "sync-back",
+        "local-default",
+        "--message",
+        "Default config publish",
+    ]);
+    let out = cmd.output().unwrap();
+    assert!(
+        out.status.success(),
+        "sync-back failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let lock = fx.lock_json();
+    let skills = lock
+        .get("skills")
+        .and_then(|v| v.as_array())
+        .expect("skills array");
+    let entry = skills
+        .iter()
+        .find(|entry| entry.get("installName") == Some(&"local-default".into()))
+        .expect("lock entry for local-default");
+    assert_eq!(
+        entry["source"]["url"].as_str().unwrap(),
+        target_url.as_str()
+    );
+    assert_eq!(
+        entry["source"]["skillPath"].as_str().unwrap(),
+        "local-default"
+    );
+}
+
+#[test]
+fn sync_back_errors_when_default_repo_missing() {
+    let fx = CliFixture::new();
+    fx.sk_success(&["init"]);
+
+    let skill_dir = fx.skill_dir("needs-repo");
+    fs::create_dir_all(&skill_dir).unwrap();
+    fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: needs-repo\ndescription: missing repo\n---\n",
+    )
+    .unwrap();
+    fs::write(skill_dir.join("README.md"), "content\n").unwrap();
+
+    let out = fx
+        .sk_cmd()
+        .args(["sync-back", "needs-repo", "--message", "Should fail"])
+        .output()
+        .unwrap();
+    assert!(
+        !out.status.success(),
+        "sync-back unexpectedly succeeded without default repo"
+    );
+    let stderr = normalize_newlines(&String::from_utf8_lossy(&out.stderr));
+    assert!(
+        stderr.contains("default_repo is not configured"),
+        "missing helpful error: {stderr}"
+    );
+}
+
+#[test]
+fn sync_back_warns_when_rsync_missing() {
+    let fx = CliFixture::new();
+    fx.sk_success(&["init"]);
+
+    let personal = fx.create_remote("skills-rsync", ".", "placeholder");
+    let target_url = personal.file_url();
+    fx.sk_success(&["config", "set", "default_repo", target_url.as_str()]);
+
+    let skill_dir = fx.skill_dir("needs-rsync");
+    fs::create_dir_all(&skill_dir).unwrap();
+    fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: needs-rsync\ndescription: rsync fallback\n---\n",
+    )
+    .unwrap();
+    fs::write(skill_dir.join("README.md"), "fallback\n").unwrap();
+
+    let gh = FakeGh::new(&fx.root);
+    gh.clear_state();
+    let mut cmd = fx.sk_cmd();
+    gh.configure_cmd(&mut cmd);
+    cmd.env("SK_FORCE_RSYNC_MISSING", "1").args([
+        "sync-back",
+        "needs-rsync",
+        "--message",
+        "Force rsync warning",
+    ]);
+    let out = cmd.output().unwrap();
+    assert!(
+        out.status.success(),
+        "sync-back failed during rsync fallback: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stderr = normalize_newlines(&String::from_utf8_lossy(&out.stderr));
+    assert!(
+        stderr.contains("Warning: 'rsync' not found"),
+        "rsync warning missing: {stderr}"
+    );
+}
+
+#[test]
+fn sync_back_warns_when_gh_missing() {
+    let fx = CliFixture::new();
+    fx.sk_success(&["init"]);
+
+    let personal = fx.create_remote("skills-missing-gh", ".", "placeholder");
+    let target_url = personal.file_url();
+    fx.sk_success(&["config", "set", "default_repo", target_url.as_str()]);
+
+    let skill_dir = fx.skill_dir("gh-warning");
+    fs::create_dir_all(&skill_dir).unwrap();
+    fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: gh-warning\ndescription: gh fallback\n---\n",
+    )
+    .unwrap();
+    fs::write(skill_dir.join("README.md"), "gh fallback\n").unwrap();
+
+    let out = fx
+        .sk_cmd()
+        .env("SK_FORCE_GH_MISSING", "1")
+        .args(["sync-back", "gh-warning", "--message", "GH warning"])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "sync-back failed without gh: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stderr = normalize_newlines(&String::from_utf8_lossy(&out.stderr));
+    assert!(
+        stderr.contains(
+            "Warning: skipping PR automation because the GitHub CLI ('gh') is unavailable"
+        ),
+        "gh warning missing: {stderr}"
+    );
+}
+
+#[test]
 fn sync_back_publishes_new_skill_with_repo_override() {
     let fx = CliFixture::new();
     fx.sk_success(&["init"]);

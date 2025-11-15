@@ -13,7 +13,7 @@ use tempfile::TempDir;
 
 use fs_utils::{mirror_dir, purge_children_except_git, refresh_install_from_commit};
 use pr::{automate_pr_flow, maybe_wait_for_auto_merge, PrAutomationReport};
-use target::{build_existing_target, build_new_target, SyncTarget};
+use target::{build_target_for_repo, SyncTarget};
 
 pub struct SyncBackArgs<'a> {
     pub installed_name: &'a str,
@@ -50,21 +50,31 @@ impl<'a> SyncSession<'a> {
         }
         let lock_path = project_root.join("skills.lock.json");
         let lockfile = lock::Lockfile::load_or_empty(&lock_path)?;
-        let target = if let Some(idx) = lockfile
+        let lock_index = lockfile
             .skills
             .iter()
-            .position(|s| s.install_name == args.installed_name)
-        {
-            build_existing_target(lockfile.skills[idx].clone(), idx)?
-        } else {
-            build_new_target(
-                args.repo,
-                args.skill_path,
-                args.installed_name,
-                args.https,
-                &cfg,
-            )?
+            .position(|s| s.install_name == args.installed_name);
+        let repo_value = match args.repo {
+            Some(raw) if !raw.trim().is_empty() => raw.trim().to_string(),
+            _ => {
+                let trimmed = cfg.default_repo.trim();
+                if trimmed.is_empty() {
+                    bail!(
+                        "default_repo is not configured. Run 'sk config set default_repo <repo>' or pass --repo <target> when calling 'sk sync-back {}'.",
+                        args.installed_name
+                    );
+                }
+                trimmed.to_string()
+            }
         };
+        let target = build_target_for_repo(
+            &repo_value,
+            args.skill_path,
+            args.installed_name,
+            args.https,
+            &cfg,
+            lock_index,
+        )?;
         let branch_name = args
             .branch
             .map(|b| b.to_string())
@@ -132,7 +142,8 @@ impl<'a> SyncSession<'a> {
         if let Some(parent) = target_subdir.parent() {
             fs::create_dir_all(parent).ok();
         }
-        if which::which("rsync").is_ok() {
+        let force_missing_rsync = env::var_os("SK_FORCE_RSYNC_MISSING").is_some();
+        if !force_missing_rsync && which::which("rsync").is_ok() {
             fs::create_dir_all(&target_subdir)?;
             run(
                 Command::new("rsync").args([
@@ -149,6 +160,10 @@ impl<'a> SyncSession<'a> {
                 "rsync contents",
             )?
         } else {
+            eprintln!(
+                "Warning: 'rsync' not found; falling back to a recursive copy for '{}'. Install rsync for faster sync-back runs.",
+                self.args.installed_name
+            );
             let is_root =
                 self.target.skill_path.trim().is_empty() || self.target.skill_path.trim() == ".";
             if target_subdir.exists() {
