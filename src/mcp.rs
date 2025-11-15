@@ -1,10 +1,15 @@
 use crate::{config, git, paths, skills};
 use anyhow::{anyhow, Context, Result};
+use crossbeam_channel::{unbounded, RecvError, Sender};
+use notify::{event::EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::fs;
 use std::io::{BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
+use std::sync::mpsc as std_mpsc;
+use std::thread;
+use std::time::{Duration, Instant};
 use walkdir::WalkDir;
 
 const DEFAULT_PROTOCOL_VERSION: &str = "2025-03-26";
@@ -36,6 +41,11 @@ struct McpServer {
     initialized: bool,
 }
 
+#[derive(Clone, Copy, Debug)]
+enum NotificationEvent {
+    ToolsListChanged,
+}
+
 impl McpServer {
     fn new(project_root: PathBuf, skills_root: PathBuf) -> Self {
         Self {
@@ -46,20 +56,86 @@ impl McpServer {
     }
 
     fn run(&mut self) -> Result<()> {
-        let stdin = std::io::stdin();
         let stdout = std::io::stdout();
-        let reader = BufReader::new(stdin.lock());
         let mut writer = BufWriter::new(stdout.lock());
-        let stream = serde_json::Deserializer::from_reader(reader).into_iter::<Value>();
-        for frame in stream {
-            match frame {
-                Ok(value) => {
-                    if let Err(err) = self.handle_frame(value, &mut writer) {
-                        eprintln!("mcp server error: {err:#}");
+
+        let (frame_tx, frame_rx) = unbounded();
+        spawn_reader_thread(frame_tx.clone());
+
+        let (notify_tx, notify_rx) = unbounded();
+        let _watcher = self.spawn_watcher(notify_tx.clone())?;
+
+        loop {
+            crossbeam_channel::select! {
+                recv(frame_rx) -> msg => match msg {
+                    Ok(value) => {
+                        if let Err(err) = self.handle_frame(value, &mut writer) {
+                            eprintln!("mcp server error: {err:#}");
+                        }
                     }
+                    Err(RecvError) => break,
+                },
+                recv(notify_rx) -> msg => match msg {
+                    Ok(event) => {
+                        if let Err(err) = self.handle_notification(event, &mut writer) {
+                            eprintln!("failed to emit notification: {err:#}");
+                        }
+                    }
+                    Err(RecvError) => break,
                 }
-                Err(err) => {
-                    eprintln!("failed to decode MCP frame: {err}");
+            };
+            writer.flush()?;
+        }
+        Ok(())
+    }
+
+    fn spawn_watcher(&self, tx: Sender<NotificationEvent>) -> Result<RecommendedWatcher> {
+        let skills_root = self.skills_root.clone();
+        let (watch_tx, watch_rx) = std_mpsc::channel();
+        let mut watcher = notify::recommended_watcher(move |res| {
+            let _ = watch_tx.send(res);
+        })?;
+        watcher.watch(&skills_root, RecursiveMode::Recursive)?;
+
+        let debounce = Duration::from_millis(500);
+        thread::spawn(move || {
+            let mut last_emit = Instant::now()
+                .checked_sub(debounce)
+                .unwrap_or_else(Instant::now);
+            while let Ok(event) = watch_rx.recv() {
+                match event {
+                    Ok(evt) => {
+                        if relevant_event(&evt.kind) {
+                            let now = Instant::now();
+                            if now.duration_since(last_emit) >= debounce {
+                                last_emit = now;
+                                let _ = tx.send(NotificationEvent::ToolsListChanged);
+                            }
+                        }
+                    }
+                    Err(err) => eprintln!("watch error: {err}"),
+                }
+            }
+        });
+
+        Ok(watcher)
+    }
+
+    fn handle_notification(
+        &mut self,
+        event: NotificationEvent,
+        writer: &mut BufWriter<std::io::StdoutLock<'_>>,
+    ) -> Result<()> {
+        match event {
+            NotificationEvent::ToolsListChanged => {
+                if self.initialized {
+                    send_notification(
+                        writer,
+                        "notifications/tools/list_changed",
+                        json!({
+                            "reason": "skills directory changed"
+                        }),
+                    )?;
                 }
             }
         }
@@ -101,9 +177,7 @@ impl McpServer {
                     send_response(id, result, writer)?;
                 }
             }
-            "notifications/initialized" => {
-                // Acknowledge silently; no response needed.
-            }
+            "notifications/initialized" => {}
             "tools/list" => {
                 if let Some(id) = id {
                     let result = json!({
@@ -493,6 +567,34 @@ fn relative_path(path: &Path, project_root: &Path) -> String {
     rel.to_string_lossy().replace('\\', "/")
 }
 
+fn spawn_reader_thread(tx: Sender<Value>) {
+    thread::spawn(move || {
+        let stdin = std::io::stdin();
+        let reader = BufReader::new(stdin);
+        let stream = serde_json::Deserializer::from_reader(reader).into_iter::<Value>();
+        for frame in stream {
+            match frame {
+                Ok(value) => {
+                    if tx.send(value).is_err() {
+                        break;
+                    }
+                }
+                Err(err) => {
+                    eprintln!("failed to decode MCP frame: {err}");
+                    break;
+                }
+            }
+        }
+    });
+}
+
+fn relevant_event(kind: &EventKind) -> bool {
+    matches!(
+        kind,
+        EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_) | EventKind::Any
+    )
+}
+
 fn send_response(
     id: Value,
     result: Value,
@@ -505,6 +607,23 @@ fn send_response(
     });
     let mut buffer = Vec::new();
     serde_json::to_writer(&mut buffer, &response)?;
+    buffer.push(b'\n');
+    writer.write_all(&buffer)?;
+    Ok(())
+}
+
+fn send_notification(
+    writer: &mut BufWriter<std::io::StdoutLock<'_>>,
+    method: &str,
+    params: Value,
+) -> Result<()> {
+    let payload = json!({
+        "jsonrpc": "2.0",
+        "method": method,
+        "params": params,
+    });
+    let mut buffer = Vec::new();
+    serde_json::to_writer(&mut buffer, &payload)?;
     buffer.push(b'\n');
     writer.write_all(&buffer)?;
     Ok(())

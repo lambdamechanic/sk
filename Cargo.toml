@@ -22,6 +22,8 @@ tempfile = "3"
 chrono = { version = "0.4", features = ["serde"] }
 regex = "1"
 gix-url = "0.33"
+crossbeam-channel = "0.5"
+notify = { version = "6", default-features = false, features = ["macos_kqueue", "serde"] }
 
 [features]
 default = []

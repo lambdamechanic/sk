@@ -87,3 +87,8 @@ We expose two MCP tools so Claude can mirror the current workflow of manually hu
 ## Open Items / Follow-ups
 - Emit `notifications/tools/list_changed` when files change (requires file watcher) so we can set `listChanged: true` later.
 - Add optional `resources/read` to stream full SKILL.md content for clients that prefer the resources primitive over tool calls.
+
+## Incremental Refresh (sk-3z2)
+- The server now watches the skills directory (recursive) via `notify` and emits `notifications/tools/list_changed` with a short reason string whenever a change occurs.
+- Events are debounced (~500ms) to avoid spamming clients during bulk edits or git operations.
+- Notifications are only sent after the MCP `initialize` handshake succeeds, preventing noise during startup.
