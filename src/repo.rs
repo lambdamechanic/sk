@@ -29,6 +29,12 @@ pub struct RepoSearchArgs<'a> {
     pub json: bool,
 }
 
+pub struct RepoRemoveArgs<'a> {
+    pub target: &'a str,
+    pub https: bool,
+    pub json: bool,
+}
+
 pub fn run_repo_add(args: RepoAddArgs) -> Result<()> {
     let project_root = git::ensure_git_repo()?;
     let cfg = config::load_or_default()?;
@@ -197,6 +203,84 @@ pub fn run_repo_search(args: RepoSearchArgs) -> Result<()> {
         }
     }
     Ok(())
+}
+
+pub fn run_repo_remove(args: RepoRemoveArgs) -> Result<()> {
+    let project_root = git::ensure_git_repo()?;
+    let cfg = config::load_or_default()?;
+    let registry_path = registry_path(&project_root);
+    let mut registry = RepoRegistry::load(&registry_path)?;
+
+    let removed = remove_entry(&mut registry, args.target, &cfg, args.https);
+    match removed {
+        Some(entry) => {
+            registry.updated_at = Utc::now().to_rfc3339();
+            registry.save(&registry_path)?;
+            if args.json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "status": "removed",
+                        "alias": entry.alias,
+                        "repo": {
+                            "host": entry.spec.host,
+                            "owner": entry.spec.owner,
+                            "name": entry.spec.repo
+                        }
+                    })
+                );
+            } else {
+                println!(
+                    "Removed repo '{}' ({}/{}/{}).",
+                    entry.alias, entry.spec.host, entry.spec.owner, entry.spec.repo
+                );
+            }
+        }
+        None => {
+            if args.json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "status": "not_found",
+                        "target": args.target
+                    })
+                );
+            } else {
+                println!("No repo registered for '{}'.", args.target);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn remove_entry(
+    registry: &mut RepoRegistry,
+    target: &str,
+    cfg: &config::UserConfig,
+    https_flag: bool,
+) -> Option<RepoEntry> {
+    if let Some(idx) = registry
+        .repos
+        .iter()
+        .position(|entry| entry.alias == target)
+    {
+        return Some(registry.repos.remove(idx));
+    }
+
+    let prefer_https = https_flag || cfg.protocol.eq_ignore_ascii_case("https");
+    if let Ok(spec) = git::parse_repo_input(target, prefer_https, &cfg.default_host) {
+        let desired = repo_key(&spec);
+        if let Some((idx, _)) = registry
+            .repos
+            .iter()
+            .enumerate()
+            .find(|(_, entry)| repo_key(&entry.spec) == desired)
+        {
+            return Some(registry.repos.remove(idx));
+        }
+    }
+
+    None
 }
 
 fn ensure_unique_alias(registry: &RepoRegistry, alias: &str) -> Result<()> {

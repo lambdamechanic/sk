@@ -141,6 +141,7 @@ make qlty-smells               # blocking (use make qlty-smells-advisory for war
 | `sk status [name...] [--json]` | Compare digests plus show upstream tip (`old -> new`). |
 | `sk repo add <repo> [--alias foo]` | Cache a remote repo (and record it in `skills.repos.json`) without installing a skill yet. |
 | `sk repo list [--json]` | Show cached repos + their aliases. |
+| `sk repo remove <alias-or-repo> [--json]` | Drop a cached repo entry (alias or repo spec) when you no longer need it. |
 | `sk repo catalog <alias-or-repo> [--json]` | List every skill exposed by a cached repo before installing. |
 | `sk repo search <query> [--repo alias] [--json]` | Search all cached repos (or a single repo via `--repo`) for matching skills. |
 | `sk update` | Refresh cached repos (safe to run on CI). |

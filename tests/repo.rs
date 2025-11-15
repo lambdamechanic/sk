@@ -107,3 +107,37 @@ fn repo_list_marks_dirty_when_remote_unreachable() {
         "expected stale cache legend in output\n{offline_out}"
     );
 }
+
+#[test]
+fn repo_remove_drops_registered_alias() {
+    let fx = CliFixture::new();
+    fx.sk_success(&["init"]);
+    let remote = fx.create_remote("remove-repo", ".", "remove-skill");
+
+    fx.sk_success(&["repo", "add", &remote.file_url(), "--alias", "remove-me"]);
+    fx.sk_success(&["repo", "remove", "remove-me"]);
+
+    let registry = fs::read_to_string(fx.project.join("skills.repos.json")).unwrap();
+    assert!(
+        !registry.contains("remove-me"),
+        "registry should not list alias after removal: {registry}"
+    );
+}
+
+#[test]
+fn repo_remove_supports_json_and_repo_specs() {
+    let fx = CliFixture::new();
+    fx.sk_success(&["init"]);
+    let remote = fx.create_remote("json-remove", ".", "json-skill");
+    let url = remote.file_url();
+
+    fx.sk_success(&["repo", "add", &url, "--alias", "json"]);
+
+    let removed = fx.run_json(&["repo", "remove", &url, "--json"]);
+    assert_eq!(removed["status"], "removed");
+    assert_eq!(removed["alias"], "json");
+
+    let missing = fx.run_json(&["repo", "remove", "json", "--json"]);
+    assert_eq!(missing["status"], "not_found");
+    assert_eq!(missing["target"], "json");
+}

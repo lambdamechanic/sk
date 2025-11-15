@@ -136,6 +136,15 @@ fn cmd_repo(cmd: RepoCmd) -> Result<()> {
             https,
             json,
         }),
+        RepoCmd::Remove {
+            target,
+            https,
+            json,
+        } => repo::run_repo_remove(repo::RepoRemoveArgs {
+            target: &target,
+            https,
+            json,
+        }),
     }
 }
 
