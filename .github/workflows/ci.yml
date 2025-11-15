@@ -125,10 +125,9 @@ jobs:
           name: lcov.info
           path: lcov.info
 
-  qlty-advisory:
-    name: qlty (advisory)
+  qlty:
+    name: qlty
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -144,8 +143,8 @@ jobs:
           ./scripts/install-qlty.sh
           echo "$HOME/.qlty/bin" >> "$GITHUB_PATH"
 
-      - name: Run qlty check (advisory)
-        run: qlty check --all --summary --no-upgrade-check --no-fail
+      - name: Run qlty check
+        run: qlty check --all --summary --no-upgrade-check
 
       - name: Upload qlty results
         if: always()
@@ -158,9 +157,8 @@ jobs:
           if-no-files-found: ignore
 
   qlty-smells:
-    name: qlty smells (advisory)
+    name: qlty smells
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4
