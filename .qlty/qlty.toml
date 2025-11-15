@@ -56,6 +56,26 @@ test_patterns = [
 [smells]
 mode = "comment"
 
+[smells.duplication]
+# Treat clones ≥16 logical lines (≈64 nodes) as smells now that the largest harness copies were reduced.
+nodes_threshold = 64
+
+[smells.identical_code]
+# Require 16 identical lines before flagging duplication to re-enable fine-grained detection.
+threshold = 16
+
+[smells.similar_code]
+# Highlight meaningful structural duplication once it grows beyond ~16 lines.
+threshold = 16
+
+[smells.function_complexity]
+# Flag functions once they hit 18+ cognitive complexity now that the provider helpers are flatter.
+threshold = 18
+
+[smells.file_complexity]
+# Flag modules that exceed ~70 total complexity to catch regressions sooner.
+threshold = 70
+
 [[source]]
 name = "default"
 default = true

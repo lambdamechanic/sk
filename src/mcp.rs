@@ -1,16 +1,21 @@
-use crate::{config, git, paths, skills};
+mod catalog;
+mod transport;
+
+use crate::{config, git, paths};
 use anyhow::{anyhow, Context, Result};
+use catalog::{relative_path, scan_skills};
 use crossbeam_channel::{unbounded, RecvError, Sender};
-use notify::{event::EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::fs;
-use std::io::{BufReader, BufWriter, Write};
-use std::path::{Path, PathBuf};
+use std::io::{BufWriter, Write};
+use std::path::PathBuf;
 use std::sync::mpsc as std_mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
-use walkdir::WalkDir;
+use transport::{
+    relevant_event, send_error, send_notification, send_response, spawn_reader_thread,
+};
 
 const DEFAULT_PROTOCOL_VERSION: &str = "2025-03-26";
 const MAX_SEARCH_LIMIT: usize = 25;
@@ -247,7 +252,7 @@ impl McpServer {
                 let needle = query.to_ascii_lowercase();
                 skills
                     .into_iter()
-                    .filter(|skill| skill.search_blob.contains(&needle))
+                    .filter(|skill| skill.matches_query(&needle))
                     .collect()
             }
         } else {
@@ -368,71 +373,6 @@ struct SearchArgs {
     limit: Option<usize>,
 }
 
-#[derive(Clone)]
-struct SkillRecord {
-    install_name: String,
-    skill_path: String,
-    skill_file: String,
-    meta: skills::SkillMeta,
-    body: String,
-    body_ascii_lower: String,
-    search_blob: String,
-}
-
-impl SkillRecord {
-    fn to_summary(&self, include_body: bool) -> SkillSummary {
-        SkillSummary {
-            install_name: self.install_name.clone(),
-            name: self.meta.name.clone(),
-            description: self.meta.description.clone(),
-            skill_path: self.skill_path.clone(),
-            skill_file: self.skill_file.clone(),
-            body: include_body.then(|| self.body.clone()),
-        }
-    }
-
-    fn score_for_tokens(&self, tokens: &[String]) -> Option<SearchMatch> {
-        let mut score = 0;
-        for token in tokens {
-            if self.search_blob.contains(token) {
-                score += 1;
-            } else {
-                return None;
-            }
-        }
-        let excerpt = snippet_for_tokens(&self.body, &self.body_ascii_lower, tokens)
-            .unwrap_or_else(|| self.meta.description.clone());
-        Some(SearchMatch {
-            install_name: self.install_name.clone(),
-            skill_path: self.skill_path.clone(),
-            skill_file: self.skill_file.clone(),
-            meta: self.meta.clone(),
-            score,
-            excerpt,
-        })
-    }
-}
-
-#[derive(Serialize)]
-struct SkillSummary {
-    install_name: String,
-    name: String,
-    description: String,
-    skill_path: String,
-    skill_file: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    body: Option<String>,
-}
-
-struct SearchMatch {
-    install_name: String,
-    skill_path: String,
-    skill_file: String,
-    meta: skills::SkillMeta,
-    score: usize,
-    excerpt: String,
-}
-
 #[derive(Serialize)]
 struct SearchHitPayload {
     name: String,
@@ -442,217 +382,6 @@ struct SearchHitPayload {
     skill_file: String,
     score: usize,
     excerpt: String,
-}
-
-fn scan_skills(project_root: &Path, skills_root: &Path) -> Result<Vec<SkillRecord>> {
-    let mut records = Vec::new();
-    for entry in WalkDir::new(skills_root)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|entry| {
-            entry.file_type().is_file()
-                && entry
-                    .file_name()
-                    .to_string_lossy()
-                    .eq_ignore_ascii_case("SKILL.md")
-        })
-    {
-        let data = match fs::read_to_string(entry.path()) {
-            Ok(data) => data,
-            Err(err) => {
-                eprintln!("warning: unable to read {}: {err}", entry.path().display());
-                continue;
-            }
-        };
-        let meta = match skills::parse_skill_frontmatter_str(&data) {
-            Ok(meta) => meta,
-            Err(err) => {
-                eprintln!(
-                    "warning: unable to parse front-matter for {}: {err}",
-                    entry.path().display()
-                );
-                continue;
-            }
-        };
-        let body = strip_frontmatter(&data).trim().to_string();
-        let body_ascii_lower = body.to_ascii_lowercase();
-        let install_name = entry
-            .path()
-            .parent()
-            .and_then(|p| p.file_name())
-            .and_then(|f| f.to_str())
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| meta.name.clone());
-        let skill_path = relative_path(entry.path().parent().unwrap_or(skills_root), project_root);
-        let skill_file = relative_path(entry.path(), project_root);
-        let mut search_blob = format!(
-            "{}\n{}\n{}\n{}",
-            install_name, meta.name, meta.description, body
-        );
-        search_blob.make_ascii_lowercase();
-        records.push(SkillRecord {
-            install_name,
-            skill_path,
-            skill_file,
-            meta,
-            body,
-            body_ascii_lower,
-            search_blob,
-        });
-    }
-    records.sort_by(|a, b| a.install_name.cmp(&b.install_name));
-    Ok(records)
-}
-
-fn strip_frontmatter(text: &str) -> &str {
-    if !text.starts_with("---") {
-        return text;
-    }
-    let mut offset = match text.find('\n') {
-        Some(idx) => idx + 1,
-        None => return text,
-    };
-    while offset < text.len() {
-        let remainder = &text[offset..];
-        match remainder.find('\n') {
-            Some(rel_end) => {
-                let line = &remainder[..rel_end];
-                if line.trim_end_matches('\r') == "---" {
-                    let mut body = &text[offset + rel_end + 1..];
-                    body = body.strip_prefix('\r').unwrap_or(body);
-                    body = body.strip_prefix('\n').unwrap_or(body);
-                    return body;
-                }
-                offset += rel_end + 1;
-            }
-            None => {
-                if remainder.trim_end_matches('\r') == "---" {
-                    return "";
-                }
-                break;
-            }
-        }
-    }
-    text
-}
-
-fn snippet_for_tokens<'a>(
-    body: &'a str,
-    body_ascii_lower: &'a str,
-    tokens: &[String],
-) -> Option<String> {
-    for token in tokens {
-        if token.is_empty() {
-            continue;
-        }
-        if let Some(idx) = body_ascii_lower.find(token) {
-            return Some(snippet_for_range(body, idx, token.len()));
-        }
-    }
-    None
-}
-
-fn snippet_for_range(text: &str, idx: usize, token_len: usize) -> String {
-    if text.is_empty() {
-        return String::new();
-    }
-    let start = idx.saturating_sub(80);
-    let end = (idx + token_len + 80).min(text.len());
-    let snippet = text[start..end].trim();
-    snippet.replace('\n', " ")
-}
-
-fn relative_path(path: &Path, project_root: &Path) -> String {
-    let rel = path.strip_prefix(project_root).unwrap_or(path);
-    rel.to_string_lossy().replace('\\', "/")
-}
-
-fn spawn_reader_thread(tx: Sender<Value>) {
-    thread::spawn(move || {
-        let stdin = std::io::stdin();
-        let reader = BufReader::new(stdin);
-        let stream = serde_json::Deserializer::from_reader(reader).into_iter::<Value>();
-        for frame in stream {
-            match frame {
-                Ok(value) => {
-                    if tx.send(value).is_err() {
-                        break;
-                    }
-                }
-                Err(err) => {
-                    eprintln!("failed to decode MCP frame: {err}");
-                    break;
-                }
-            }
-        }
-    });
-}
-
-fn relevant_event(kind: &EventKind) -> bool {
-    matches!(
-        kind,
-        EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_) | EventKind::Any
-    )
-}
-
-fn send_response(
-    id: Value,
-    result: Value,
-    writer: &mut BufWriter<std::io::StdoutLock<'_>>,
-) -> Result<()> {
-    let response = json!({
-        "jsonrpc": "2.0",
-        "id": id,
-        "result": result
-    });
-    let mut buffer = Vec::new();
-    serde_json::to_writer(&mut buffer, &response)?;
-    buffer.push(b'\n');
-    writer.write_all(&buffer)?;
-    Ok(())
-}
-
-fn send_notification(
-    writer: &mut BufWriter<std::io::StdoutLock<'_>>,
-    method: &str,
-    params: Value,
-) -> Result<()> {
-    let payload = json!({
-        "jsonrpc": "2.0",
-        "method": method,
-        "params": params,
-    });
-    let mut buffer = Vec::new();
-    serde_json::to_writer(&mut buffer, &payload)?;
-    buffer.push(b'\n');
-    writer.write_all(&buffer)?;
-    Ok(())
-}
-
-fn send_error(
-    id: Value,
-    code: i32,
-    message: &str,
-    data: Option<Value>,
-    writer: &mut BufWriter<std::io::StdoutLock<'_>>,
-) -> Result<()> {
-    let mut error = json!({
-        "code": code,
-        "message": message,
-    });
-    if let Some(data) = data {
-        error["data"] = data;
-    }
-    let response = json!({
-        "jsonrpc": "2.0",
-        "id": id,
-        "error": error
-    });
-    let mut buffer = Vec::new();
-    serde_json::to_writer(&mut buffer, &response)?;
-    buffer.push(b'\n');
-    writer.write_all(&buffer)?;
-    Ok(())
 }
 
 fn tool_definitions() -> Vec<Value> {
@@ -701,57 +430,4 @@ fn tool_definitions() -> Vec<Value> {
             }
         }),
     ]
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-    use tempfile::tempdir;
-
-    fn write_skill(dir: &Path, name: &str, description: &str, body: &str) -> PathBuf {
-        let skill_dir = dir.join(name);
-        fs::create_dir_all(&skill_dir).unwrap();
-        let path = skill_dir.join("SKILL.md");
-        let contents = format!("---\nname: {name}\ndescription: {description}\n---\n{body}\n");
-        fs::write(&path, contents).unwrap();
-        path
-    }
-
-    #[test]
-    fn scans_skill_metadata() {
-        let project = tempdir().unwrap();
-        let skills_root = project.path().join("skills");
-        write_skill(&skills_root, "alpha", "Alpha skill", "Alpha body");
-        write_skill(&skills_root, "beta", "Beta skill", "Use this skill.");
-
-        let records = scan_skills(project.path(), &skills_root).unwrap();
-        assert_eq!(records.len(), 2);
-        let first = &records[0];
-        assert_eq!(first.install_name, "alpha");
-        assert!(first.search_blob.contains("alpha"));
-        assert_eq!(first.body.trim(), "Alpha body");
-    }
-
-    #[test]
-    fn search_scores_by_tokens() {
-        let project = tempdir().unwrap();
-        let skills_root = project.path().join("skills");
-        write_skill(
-            &skills_root,
-            "notes",
-            "Note keeper",
-            "Use bd ready to find issues.",
-        );
-        write_skill(&skills_root, "sync", "Sync helper", "Sync skills via gh.");
-
-        let records = scan_skills(project.path(), &skills_root).unwrap();
-        let query = vec!["bd".to_string(), "ready".to_string()];
-        let hits: Vec<_> = records
-            .iter()
-            .filter_map(|skill| skill.score_for_tokens(&query))
-            .collect();
-        assert_eq!(hits.len(), 1);
-        assert!(hits[0].excerpt.contains("bd ready"));
-    }
 }
