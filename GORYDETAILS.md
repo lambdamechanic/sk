@@ -31,10 +31,21 @@ cd sk-decisions
 cargo build --release          # binary at target/release/sk
 # optional: cargo install --path .   # installs into ~/.cargo/bin/sk
 ```
+Install the pinned qlty CLI locally so the make targets match CI:
+```bash
+./scripts/install-qlty.sh      # installs version from .qlty-version into ~/.qlty/bin
+export PATH="$HOME/.qlty/bin:$PATH"
+```
+Qlty now runs with its upgrade check enabled both locally and in CI, so expect it to contact qlty.sh to confirm versions before linting. Keep network access available; if you must skip the check for debugging, do it temporarily and never commit without re-enabling it.
+
 Upgrade dependencies or lint locally before sending PRs:
 ```bash
+make precommit                 # fmt + clippy + qlty + smells (all blocking)
+# or run the pieces manually:
 cargo fmt --all
 cargo clippy --all-targets --all-features
+make qlty
+make qlty-smells               # blocking; use make qlty-smells-advisory for warn-only runs
 ```
 
 ## Key concepts & layout

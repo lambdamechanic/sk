@@ -92,6 +92,13 @@ sk precommit --allow-local   # warn-only (useful for experimentation)
 - **GitHub CLI (`gh`)** — `sk sync-back` uses `gh pr list|create|merge` to open and auto-merge PRs. Without `gh`, the push still happens but you must open the PR manually.
 - Standard SSH credentials (default protocol) or HTTPS access tokens if you pass `--https`.
 
+## Contributing & qlty guardrails
+- Run `scripts/install-qlty.sh` once (and whenever `.qlty-version` changes) to install the pinned qlty CLI into `~/.qlty/bin`. The script honors `QLTY_VERSION`/`QLTY_INSTALL` if you need overrides.
+- `make precommit` now runs `cargo fmt`, `cargo clippy --all-targets --all-features`, strict `make qlty` (fails on any findings), and blocking `make qlty-smells`. Keep `$HOME/.qlty/bin` on your `PATH` so the make target can find the CLI.
+- Use `make qlty-advisory` when you only need warning-level results, or `make qlty-smells-advisory` for a warn-only smells pass. Both standard targets (`make qlty`, `make qlty-smells`) fail the build on issues and respect the flags in `QLTY_FLAGS`/`QLTY_SMELLS_FLAGS`.
+- GitHub Actions mirrors the same setup: both `qlty` and `qlty-smells` jobs are required, with artifacts `qlty-results` and `qlty-smells-results` respectively. Check those artifacts whenever CI fails.
+- Neither the Makefile nor CI suppress qlty's upgrade check anymore—expect the CLI to verify that your local CLI/plugins match upstream before linting. Keep outbound network enabled or set the `QLTY_UPGRADE_CHECK=0` env only when debugging failures (and restore it before committing).
+
 ## Installation options
 ### From crates.io (recommended)
 ```bash
@@ -108,8 +115,12 @@ cargo build --release          # binary at target/release/sk
 
 Upgrade dependencies or lint locally:
 ```bash
+make precommit                 # fmt + clippy + qlty + smells (blocking)
+# or run pieces manually:
 cargo fmt --all
 cargo clippy --all-targets --all-features
+make qlty
+make qlty-smells               # blocking (use make qlty-smells-advisory for warn-only)
 ```
 
 ## Key concepts & layout
