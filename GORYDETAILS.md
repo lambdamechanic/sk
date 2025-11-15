@@ -39,12 +39,12 @@ export PATH="$HOME/.qlty/bin:$PATH"
 
 Upgrade dependencies or lint locally before sending PRs:
 ```bash
-make precommit                 # fmt + clippy + qlty + advisory smells
+make precommit                 # fmt + clippy + qlty + smells (all blocking)
 # or run the pieces manually:
 cargo fmt --all
 cargo clippy --all-targets --all-features
 make qlty
-make qlty-smells               # advisory; fails only when smells exceed thresholds
+make qlty-smells               # blocking; use make qlty-smells-advisory for warn-only runs
 ```
 
 ## Key concepts & layout

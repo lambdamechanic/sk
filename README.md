@@ -94,9 +94,9 @@ sk precommit --allow-local   # warn-only (useful for experimentation)
 
 ## Contributing & qlty guardrails
 - Run `scripts/install-qlty.sh` once (and whenever `.qlty-version` changes) to install the pinned qlty CLI into `~/.qlty/bin`. The script honors `QLTY_VERSION`/`QLTY_INSTALL` if you need overrides.
-- `make precommit` now runs `cargo fmt`, `cargo clippy --all-targets --all-features`, strict `make qlty` (fails on any findings), and the advisory `make qlty-smells-advisory`. Keep `$HOME/.qlty/bin` on your `PATH` so the make target can find the CLI.
-- Use `make qlty-advisory` or `make qlty-smells` when you want to run individual checks outside the full suite. Both commands respect the flags in the `QLTY_FLAGS`/`QLTY_SMELLS_FLAGS` variables near the top of the `Makefile`.
-- GitHub Actions mirrors the same setup: the blocking `qlty` job collects findings under the `qlty-results` artifact, and `qlty-smells` uploads advisory duplicates/complexity output as `qlty-smells-results`. Check those artifacts whenever CI fails.
+- `make precommit` now runs `cargo fmt`, `cargo clippy --all-targets --all-features`, strict `make qlty` (fails on any findings), and blocking `make qlty-smells`. Keep `$HOME/.qlty/bin` on your `PATH` so the make target can find the CLI.
+- Use `make qlty-advisory` when you only need warning-level results, or `make qlty-smells-advisory` for a warn-only smells pass. Both standard targets (`make qlty`, `make qlty-smells`) fail the build on issues and respect the flags in `QLTY_FLAGS`/`QLTY_SMELLS_FLAGS`.
+- GitHub Actions mirrors the same setup: both `qlty` and `qlty-smells` jobs are required, with artifacts `qlty-results` and `qlty-smells-results` respectively. Check those artifacts whenever CI fails.
 
 ## Installation options
 ### From crates.io (recommended)
@@ -114,10 +114,12 @@ cargo build --release          # binary at target/release/sk
 
 Upgrade dependencies or lint locally:
 ```bash
-make precommit                 # fmt + clippy + qlty + advisory smells
+make precommit                 # fmt + clippy + qlty + smells (blocking)
 # or run pieces manually:
 cargo fmt --all
 cargo clippy --all-targets --all-features
+make qlty
+make qlty-smells               # blocking (use make qlty-smells-advisory for warn-only)
 ```
 
 ## Key concepts & layout
