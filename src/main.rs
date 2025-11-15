@@ -205,26 +205,69 @@ fn cmd_config(cmd: ConfigCmd) -> Result<()> {
 
 fn cmd_list(_root_flag: Option<&str>, json: bool) -> Result<()> {
     let project_root = git::ensure_git_repo()?;
+    let cfg = config::load_or_default()?;
+    let install_root_rel = _root_flag.unwrap_or(&cfg.default_root);
+    let install_root = paths::resolve_project_path(&project_root, install_root_rel);
     let lock_path = project_root.join("skills.lock.json");
     if !lock_path.exists() {
         println!("[]");
         return Ok(());
     }
     let lf = lock::Lockfile::load(&lock_path)?;
+    let rows: Vec<ListRow> = lf
+        .skills
+        .iter()
+        .map(|skill| ListRow {
+            install_name: skill.install_name.clone(),
+            repo: format_repo_id(skill),
+            skill_path: skill.source.skill_path().to_string(),
+            description: load_description(&install_root, skill),
+        })
+        .collect();
+
     if json {
-        println!("{}", serde_json::to_string_pretty(&lf.skills)?);
+        println!("{}", serde_json::to_string_pretty(&rows)?);
     } else {
-        for s in lf.skills {
+        for row in rows {
             println!(
-                "{}\t{}@{}\t{}",
-                s.install_name,
-                s.source.repo_name(),
-                &s.commit[..7],
-                s.source.skill_path()
+                "{}\t{}\t{}\t{}",
+                row.install_name, row.repo, row.skill_path, row.description
             );
         }
     }
     Ok(())
+}
+
+#[derive(Serialize)]
+struct ListRow {
+    #[serde(rename = "installName")]
+    install_name: String,
+    repo: String,
+    #[serde(rename = "skillPath")]
+    skill_path: String,
+    description: String,
+}
+
+fn format_repo_id(skill: &lock::LockSkill) -> String {
+    let spec = skill.source.repo_spec();
+    let base = if spec.host == "local" {
+        spec.url.clone()
+    } else {
+        format!("{}/{}", spec.owner, spec.repo)
+    };
+    if skill.source.skill_path() == "." {
+        base
+    } else {
+        format!("{}:{}", base, skill.source.skill_path())
+    }
+}
+
+fn load_description(install_root: &std::path::Path, skill: &lock::LockSkill) -> String {
+    let skill_md = install_root.join(&skill.install_name).join("SKILL.md");
+    match crate::skills::parse_frontmatter_file(&skill_md) {
+        Ok(meta) => meta.description,
+        Err(_) => String::new(),
+    }
 }
 
 #[derive(Serialize)]
