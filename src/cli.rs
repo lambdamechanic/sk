@@ -50,6 +50,12 @@ pub enum Commands {
         #[arg(long)]
         json: bool,
     },
+    #[command(about = "Show diffs between local skills and their remote repos")]
+    Diff {
+        names: Vec<String>,
+        #[arg(long)]
+        root: Option<String>,
+    },
     Update,
     Upgrade {
         #[arg(allow_hyphen_values = true)]

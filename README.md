@@ -70,6 +70,8 @@ Implementation notes, machine-readable catalog output, cache layouts, building f
 ### 8. Keep caches fresh and roll forward clean installs
 ```bash
 sk update                    # fetch every repo referenced in the lockfile (cache-only)
+sk diff                      # compare local installs against the cached remote tip
+sk diff frontend-design      # limit the diff to just the named installs
 sk upgrade --dry-run         # show old -> new commits without touching the repo
 sk upgrade --all             # apply upgrades for every clean (unmodified) skill
 sk remove <name>             # refuses if modified unless you pass --force
