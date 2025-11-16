@@ -20,6 +20,8 @@ use transport::{
 const DEFAULT_PROTOCOL_VERSION: &str = "2025-03-26";
 const MAX_SEARCH_LIMIT: usize = 25;
 const DEFAULT_SEARCH_LIMIT: usize = 10;
+const QUICKSTART_URI: &str = "sk://quickstart";
+const QUICKSTART_DOC: &str = include_str!("../docs/AGENT_QUICKSTART.md");
 
 pub fn run_server(root_override: Option<&str>) -> Result<()> {
     let project_root = git::ensure_git_repo()?;
@@ -171,13 +173,16 @@ impl McpServer {
                         "capabilities": {
                             "tools": {
                                 "listChanged": false
+                            },
+                            "resources": {
+                                "listChanged": false
                             }
                         },
                         "serverInfo": {
-                            "name": "sk-mcp",
+                            "name": "sk",
                             "version": env!("CARGO_PKG_VERSION"),
                         },
-                        "instructions": "Start every task with skills.search to confirm whether a repo skill applies, then use skills.list or skills.show to pull the relevant body text when needed."
+                        "instructions": "Start every task with skills_search to confirm whether a repo skill applies, then use skills_list or skills_show to pull the relevant body text when needed."
                     });
                     send_response(id, result, writer)?;
                 }
@@ -205,6 +210,34 @@ impl McpServer {
                     }
                 }
             }
+            "resources/list" => {
+                if let Some(id) = id {
+                    match self.handle_resources_list(params) {
+                        Ok(resp) => send_response(id, resp, writer)?,
+                        Err(err) => send_error(
+                            id,
+                            -32602,
+                            &format!("resources/list failed: {err}"),
+                            None,
+                            writer,
+                        )?,
+                    }
+                }
+            }
+            "resources/read" => {
+                if let Some(id) = id {
+                    match self.handle_resources_read(params) {
+                        Ok(resp) => send_response(id, resp, writer)?,
+                        Err(err) => send_error(
+                            id,
+                            -32001,
+                            &format!("resources/read failed: {err}"),
+                            None,
+                            writer,
+                        )?,
+                    }
+                }
+            }
             _ => {
                 if let Some(id) = id {
                     send_error(
@@ -225,28 +258,66 @@ impl McpServer {
         let parsed: ToolCall = serde_json::from_value(params.clone())
             .context("invalid tools/call payload (expected name + arguments)")?;
         match parsed.name.as_str() {
-            "skills.list" => {
+            "skills_list" => {
                 let args: ListArgs =
                     serde_json::from_value(parsed.arguments.unwrap_or(Value::Null))
-                        .context("invalid arguments for skills.list")?;
+                        .context("invalid arguments for skills_list")?;
                 let payload = self.list_skills(args)?;
                 Ok(payload)
             }
-            "skills.search" => {
+            "skills_search" => {
                 let args: SearchArgs =
                     serde_json::from_value(parsed.arguments.unwrap_or(Value::Null))
-                        .context("invalid arguments for skills.search")?;
+                        .context("invalid arguments for skills_search")?;
                 let payload = self.search_skills(args)?;
                 Ok(payload)
             }
-            "skills.show" => {
+            "skills_show" => {
                 let args: ShowArgs =
                     serde_json::from_value(parsed.arguments.unwrap_or(Value::Null))
-                        .context("invalid arguments for skills.show")?;
+                        .context("invalid arguments for skills_show")?;
                 let payload = self.show_skill(args)?;
                 Ok(payload)
             }
             other => Err(anyhow!("unknown tool: {other}")),
+        }
+    }
+
+    fn handle_resources_list(&self, params: Value) -> Result<Value> {
+        let ResourceListArgs { cursor } =
+            serde_json::from_value(params).context("invalid arguments for resources/list")?;
+        let _ = cursor;
+        Ok(json!({
+            "resources": [
+                {
+                    "uri": QUICKSTART_URI,
+                    "name": "sk Quickstart",
+                    "title": "sk Quickstart",
+                    "description": "Agent quickstart: install sk, cache Anthropic, publish + sync skills.",
+                    "mimeType": "text/markdown"
+                }
+            ]
+        }))
+    }
+
+    fn handle_resources_read(&self, params: Value) -> Result<Value> {
+        let args: ResourceReadArgs =
+            serde_json::from_value(params).context("invalid arguments for resources/read")?;
+        let uri = args.uri.trim();
+        if uri.is_empty() {
+            anyhow::bail!("uri must not be empty");
+        }
+        match uri {
+            QUICKSTART_URI => Ok(json!({
+                "contents": [{
+                    "uri": QUICKSTART_URI,
+                    "name": "sk Quickstart",
+                    "title": "sk Quickstart",
+                    "mimeType": "text/markdown",
+                    "text": QUICKSTART_DOC
+                }]
+            })),
+            other => anyhow::bail!("unknown resource: {other}"),
         }
     }
 
@@ -432,10 +503,21 @@ struct SearchHitPayload {
     excerpt: String,
 }
 
+#[derive(Default, Deserialize)]
+struct ResourceListArgs {
+    #[serde(default)]
+    cursor: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ResourceReadArgs {
+    uri: String,
+}
+
 fn tool_definitions() -> Vec<Value> {
     vec![
         json!({
-            "name": "skills.list",
+            "name": "skills_list",
             "title": "List repo skills",
             "description": "Enumerate every SKILL.md under the repo's skills root with metadata and optional body text.",
             "inputSchema": {
@@ -454,7 +536,7 @@ fn tool_definitions() -> Vec<Value> {
             }
         }),
         json!({
-            "name": "skills.show",
+            "name": "skills_show",
             "title": "Show a skill",
             "description": "Return the metadata and full body of a single skill by its SKILL.md front-matter name.",
             "inputSchema": {
@@ -471,7 +553,7 @@ fn tool_definitions() -> Vec<Value> {
             }
         }),
         json!({
-            "name": "skills.search",
+            "name": "skills_search",
             "title": "Search repo skills",
             "description": "Search SKILL metadata and body text for keywords to quickly find relevant instructions.",
             "inputSchema": {

@@ -133,25 +133,35 @@ make qlty-smells               # blocking (use make qlty-smells-advisory for war
 
 ## Encourage agents to bootstrap the skills MCP
 
-An MCP server can’t force a model to call it—you have to ask your agents explicitly. We recommend adding a short policy blurb to `AGENTS.md` (or whichever system prompt you use) that makes “run `skills.search`/`skills.list` before you start” part of the default ritual. Mentioning it in README helps teammates keep the policy consistent across repos.
+An MCP server can’t force a model to call it—you have to ask your agents explicitly. We recommend adding a short policy blurb to `AGENTS.md` (or whichever system prompt you use) that makes “run `skills_search`/`skills_list` before you start” part of the default ritual. Mentioning it in README helps teammates keep the policy consistent across repos.
 
 Drop something like this into `AGENTS.md`:
 
-> **Skills bootstrap checklist** — At the top of every session, call the repo-scoped skills MCP once to discover local helpers. Run `skills.search` with a few task keywords (or `skills.list` if you need the catalog) and skim the results before writing a plan. Reference any relevant skills in your response. Skip this step only if there are zero skills installed.
+> **Skills bootstrap checklist** — At the top of every session, call the repo-scoped skills MCP once to discover local helpers. Run `skills_search` with a few task keywords (or `skills_list` if you need the catalog) and skim the results before writing a plan. Reference any relevant skills in your response. Skip this step only if there are zero skills installed.
 
 That paragraph solves the “chicken-and-egg” problem: the agent reads the policy first, makes a single MCP call to find out what’s available, and only then starts reasoning about the actual task.
 
 ### Wire Codex (or any MCP client) into `sk`
 
 1. Make sure `sk` is on your `$PATH` (`cargo install sk` if needed) and that you run the MCP server from this repository’s root so it can find `.git` and the vendored `skills/` directory.
-2. Register the server with Codex (one time per machine) so agents can call `skills.list`, `skills.search`, and `skills.show` via MCP:
+2. Register the server with Codex (one time per machine) so agents can call `skills_list`, `skills_search`, and `skills_show` via MCP. Add the server to `~/.codex/config.toml`:
 
-   ```bash
-   codex mcp add sk-skills -- bash -lc 'cd /home/mark/lambdalabs/sk && sk mcp-server'
+   ```toml
+   [mcp_servers.sk]
+   command = "sk"
+   args = ["mcp-server"]
    ```
 
-   Replace the path with your local checkout if it differs. After running the command you can confirm the registration with `codex mcp list`.
-3. When you start a Codex (or Claude) session in this repo, remind the agent that the `sk-skills` MCP is available and should be called before planning. The `skills.search` tool is ideal for “what skills apply to <task>?” checks; `skills.list` and `skills.show` return complete metadata/bodies when you already know the name.
+   Run Codex from this repository’s root (or add `dir = "/path/to/your/checkout"`) so `sk mcp-server` can find `.git` and the vendored `skills/` tree. If you prefer to register the server via CLI instead of editing the config by hand, run the equivalent command once from the repo root:
+
+   ```bash
+   codex mcp add -- bash -lc 'cd /home/mark/lambdalabs/sk && sk mcp-server' sk
+   ```
+
+   Replace the path with your local checkout if it differs. After either approach, confirm the entry with `codex mcp list`.
+3. When you start a Codex (or Claude) session in this repo, remind the agent that the `sk` MCP is available and should be called before planning. The `skills_search` tool is ideal for “what skills apply to <task>?” checks; `skills_list` and `skills_show` return complete metadata/bodies when you already know the name. The MCP server is read-only—it never edits skills or the lockfile; all modifications go through the `sk` CLI.
+
+   Bonus: the MCP server also advertises a `sk://quickstart` resource (via `resources/list`) sourced from `docs/AGENT_QUICKSTART.md`. Agents can `resources/read` that URI to pull the repo-scoped quickstart (install → cache → publish) without scraping the file system.
 
 ## Command cheat sheet
 | Command | Use it when |
