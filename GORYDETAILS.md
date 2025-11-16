@@ -64,6 +64,7 @@ make qlty-smells               # blocking; use make qlty-smells-advisory for war
 | `sk list` / `sk where <name>` | Inspect installed skill set or find the on-disk path. |
 | `sk check [name...] [--json]` | Quick OK/modified/missing status for installs. |
 | `sk status [name...] [--json]` | Compare digests plus show upstream tip (`old -> new`). |
+| `sk diff [name...]` | Show textual diffs between local installs and the cached remote default-branch tip. |
 | `sk repo add <repo> [--alias foo]` | Cache a remote repo (and record it in `skills.repos.json`) without installing a skill yet. |
 | `sk repo list [--json]` | Show cached repos plus total skills vs. installed counts; unreachable repos reuse cached counts and show a `*` next to the SKILLS column (`--json` prints the raw registry). |
 | `sk repo remove <alias-or-repo> [--json]` | Remove a cached repo entry by alias or repo spec when it’s no longer needed. |

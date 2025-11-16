@@ -37,6 +37,7 @@ fn main() -> Result<()> {
         } => cmd_where(&installed_name, root.as_deref()),
         Commands::Check { names, root, json } => cmd_check(&names, root.as_deref(), json),
         Commands::Status { names, root, json } => cmd_status(&names, root.as_deref(), json),
+        Commands::Diff { names, root } => cmd_diff(&names, root.as_deref()),
         Commands::Update => update::run_update(),
         Commands::Upgrade {
             target,
@@ -374,6 +375,118 @@ fn cmd_status(names: &[String], root_flag: Option<&str>, json: bool) -> Result<(
         }
     }
     Ok(())
+}
+
+fn cmd_diff(names: &[String], root_flag: Option<&str>) -> Result<()> {
+    let ctx = load_project_context(root_flag)?;
+    let targets = select_skills(&ctx.lockfile.skills, names);
+    if targets.is_empty() {
+        println!("No matching skills to diff.");
+        return Ok(());
+    }
+    let stdout_is_tty = std::io::stdout().is_terminal();
+    for (idx, skill) in targets.iter().enumerate() {
+        if idx > 0 {
+            println!();
+        }
+        let display_name = if stdout_is_tty {
+            skill.install_name.as_str().bold().bright_cyan().to_string()
+        } else {
+            skill.install_name.clone()
+        };
+        println!("==> {}", display_name);
+        match resolve_remote_tip(skill) {
+            Ok(remote) => {
+                println!(
+                    "remote: {} @ {} (origin/{})",
+                    format_repo_id(skill),
+                    &remote.commit[..7],
+                    remote.branch
+                );
+                match diff_skill(&ctx.install_root, skill, &remote) {
+                    Ok(DiffOutcome::DiffShown) => {}
+                    Ok(DiffOutcome::NoDiff) => println!("(no differences)"),
+                    Err(err) => eprintln!("  error: {err:#}"),
+                }
+            }
+            Err(err) => eprintln!("  error: {err:#}"),
+        }
+    }
+    Ok(())
+}
+
+enum DiffOutcome {
+    DiffShown,
+    NoDiff,
+}
+
+struct RemoteTip {
+    cache_dir: std::path::PathBuf,
+    branch: String,
+    commit: String,
+}
+
+fn resolve_remote_tip(skill: &lock::LockSkill) -> Result<RemoteTip> {
+    let spec = skill.source.repo_spec();
+    let cache_dir =
+        paths::resolve_or_primary_cache_path(&spec.url, &spec.host, &spec.owner, &spec.repo);
+    if !cache_dir.exists() {
+        bail!(
+            "cache for {} missing; run `sk update` first",
+            format_repo_id(skill)
+        );
+    }
+    let owned = skill.source.repo_spec_owned();
+    let branch = git::detect_or_set_default_branch(&cache_dir, &owned)?;
+    let tip = git::rev_parse(&cache_dir, &format!("refs/remotes/origin/{branch}"))?;
+    Ok(RemoteTip {
+        cache_dir,
+        branch,
+        commit: tip,
+    })
+}
+
+fn diff_skill(
+    install_root: &std::path::Path,
+    skill: &lock::LockSkill,
+    remote: &RemoteTip,
+) -> Result<DiffOutcome> {
+    let local_dir = install_root.join(&skill.install_name);
+    if !local_dir.exists() {
+        bail!("local install missing at {}", local_dir.display());
+    }
+    let checkout = tempfile::tempdir().context("create temporary directory for remote contents")?;
+    install::extract_subdir_from_commit(
+        &remote.cache_dir,
+        &remote.commit,
+        skill.source.skill_path(),
+        checkout.path(),
+    )
+    .with_context(|| {
+        format!(
+            "extracting '{}' from {}",
+            skill.source.skill_path(),
+            &remote.commit[..7]
+        )
+    })?;
+    let status = std::process::Command::new("git")
+        .arg("-c")
+        .arg("core.autocrlf=false")
+        .arg("diff")
+        .arg("--no-index")
+        .arg("--src-prefix=local/")
+        .arg("--dst-prefix=remote/")
+        .arg("--")
+        .arg(&local_dir)
+        .arg(checkout.path())
+        .status()
+        .context("git diff --no-index failed to run")?;
+    match status.code() {
+        Some(0) => Ok(DiffOutcome::NoDiff),
+        Some(1) => Ok(DiffOutcome::DiffShown),
+        Some(code) => bail!("git diff exited with status {code}"),
+        None => bail!("git diff terminated by signal"),
+    }
 }
 
 struct ProjectContext {
