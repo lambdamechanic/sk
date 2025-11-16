@@ -10,14 +10,14 @@
 - On launch it waits for the MCP client to send `initialize`; the server replies with:
   - `protocolVersion`: `2025-03-26` (latest spec with stable lifecycle docs).citeturn0search0
   - `capabilities.tools.listChanged: false` (we rebuild the tool list on demand, but do not push notifications yet).citeturn0search3
-  - `serverInfo`: `{ name: "sk-mcp", version: <crate version> }`.
-  - `instructions`: short text telling the client to prefer `skills.list` for exhaustive metadata and `skills.search` for targeted lookups.
+  - `serverInfo`: `{ name: "sk", version: <crate version> }`.
+  - `instructions`: short text telling the client to prefer `skills_list` for exhaustive metadata and `skills_search` for targeted lookups.
 - After we respond, the client will send `notifications/initialized`; we acknowledge but do not emit a response, as required by MCP lifecycle rules.citeturn0search0
 
 ## Tool Surface
 We expose two MCP tools so Claude can mirror the current workflow of manually hunting for skills:
 
-### 1. `skills.list`
+### 1. `skills_list`
 - **Purpose**: enumerate every `SKILL.md` under the skills root, return metadata + optional body text so the Skill Tool can show available skills.
 - **Input schema**:
   ```json
@@ -44,7 +44,7 @@ We expose two MCP tools so Claude can mirror the current workflow of manually hu
   - `body` (optional) when `includeBody` is true
 - We also emit a text blob summarizing how many skills matched so the host UI has something human-friendly.
 
-### 2. `skills.search`
+### 2. `skills_search`
 - **Purpose**: keyword search across install name, metadata, and SKILL.md body so Claude can ask “find a skill mentioning bd ready” etc.
 - **Input schema**:
   ```json
@@ -68,7 +68,7 @@ We expose two MCP tools so Claude can mirror the current workflow of manually hu
     "additionalProperties": false
   }
   ```
-- **Output**: `{ query, limit, total, results: SearchHit[] }` where each hit includes the same metadata as `skills.list` plus:
+- **Output**: `{ query, limit, total, results: SearchHit[] }` where each hit includes the same metadata as `skills_list` plus:
   - `score`: number of matched tokens
   - `excerpt`: ~160-character window around the first match so the agent can judge relevance before loading the full skill doc.
 
@@ -76,7 +76,7 @@ We expose two MCP tools so Claude can mirror the current workflow of manually hu
 - Skills are discovered by walking `<project-root>/<root>/` (default `./skills`). We treat every `SKILL.md` (any depth) as a skill entry. If parsing a front-matter fails we log to stderr and skip it instead of crashing the MCP session.
 - We reuse the existing `skills::parse_skill_frontmatter_str` helper to keep YAML/kv parsing logic in one place.
 - Search tokenization: lowercase the query, split on ASCII whitespace, and require each token to appear in the concatenated string of install name + meta + skill body. This keeps scoring deterministic and avoids “best effort” hallucinations.
-- Because clients can re-use the same process during long editing sessions, `skills.list` and `skills.search` both rescan the filesystem per call so the output always reflects the latest SKILL.md state without needing a custom invalidate command.
+- Because clients can re-use the same process during long editing sessions, `skills_list` and `skills_search` both rescan the filesystem per call so the output always reflects the latest SKILL.md state without needing a custom invalidate command.
 
 ## Testing Strategy
 - Unit-test the pure helpers:
@@ -92,3 +92,8 @@ We expose two MCP tools so Claude can mirror the current workflow of manually hu
 - The server now watches the skills directory (recursive) via `notify` and emits `notifications/tools/list_changed` with a short reason string whenever a change occurs.
 - Events are debounced (~500ms) to avoid spamming clients during bulk edits or git operations.
 - Notifications are only sent after the MCP `initialize` handshake succeeds, preventing noise during startup.
+
+## Quickstart Resource (sk-qp9)
+- Added MCP `resources/list` / `resources/read` support so the server can advertise curated documents in addition to tools.
+- The first resource exposes `sk://quickstart` as `text/markdown`, serving `docs/AGENT_QUICKSTART.md` (a machine-oriented quickstart distinct from `README.md`).
+- Clients may call `resources/read` at any time; the payload is static and ships with the crate (via `include_str!`), so it does not touch the developer’s working tree.
