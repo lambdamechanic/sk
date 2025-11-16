@@ -19,6 +19,7 @@ pub fn compute_upstream_update(
     cache_dir: &Path,
     spec: &git::RepoSpec,
     current_commit: &str,
+    skill_path: &str,
 ) -> Option<String> {
     if !cache_dir.exists() {
         return None;
@@ -29,6 +30,14 @@ pub fn compute_upstream_update(
     if new_sha == current_commit {
         None
     } else {
+        let trimmed = skill_path.trim();
+        if !trimmed.is_empty() && trimmed != "." {
+            let relevant =
+                git::diff_includes_path(cache_dir, current_commit, &new_sha, trimmed).ok()?;
+            if !relevant {
+                return None;
+            }
+        }
         Some(format!(
             "{} -> {}",
             short_sha(current_commit),
