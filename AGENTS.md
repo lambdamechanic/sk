@@ -1,3 +1,11 @@
+## Skills MCP Policy
+
+> **Skills bootstrap checklist** — At the top of every session, call the repo-scoped skills MCP once to discover local helpers. Run `skills.list` to see available skils and skim the list before writing a plan. Reference any relevant skills in your response. 
+
+- Always start with `skills.list` to confirm whether any vendored skill applies to the task at hand.
+- `skills.show` returns the entire SKILL body for a known `name`.
+- Cite whichever skills you consulted in your final response so reviewers can trace guidance back to the MCP output.
+
 ## Issue Tracking with bd (beads)
 
 **IMPORTANT**: This project uses **bd (beads)** for ALL issue tracking. Do NOT use markdown TODOs, task lists, or other tracking methods.
@@ -128,21 +136,4 @@ history/
 
 For more details, see README.md and QUICKSTART.md.
 
-## Repo-Local Claude Skills
 
-This repository vendors Claude Skills under `./skills/`. Agents should check this folder before starting work and use skills when applicable.
-
-- Where to look: `skills/<name>/SKILL.md`
-- How to use: Read each skill’s SKILL.md for front‑matter (`name`, `description`) and usage guidance.
-
-Currently included (folder → SKILL name):
-- `skills/landing-the-plane/` → `landing-the-plane` — Checklist for finishing work and opening a ready-for-review PR.
-- `skills/starting-the-task/` → `starting-the-task` — Kickoff checklist: plan, branch, bd tracking, validation.
-- `skills/testing/` → `testing-patterns` — Testing patterns, fakes vs mocks, property-based testing.
-- `skills/rust-guidelines/` → `rust-guidelines` — Pragmatic Rust conventions for this project.
-- `skills/bd/` → `bd-workflow` — How to use bd (beads) in this repo.
-- `skills/dumbwaiter-mcp/` → `dumbwaiter-mcp` — Wait-for-change via the Dumbwaiter MCP server (PR checks/merge). Requires the adjacent Dumbwaiter MCP server.
-
-Note on `sk` CLI: `sk` is being developed in this repo and is not yet feature‑complete. Until it is ready, do not rely on it to install/upgrade/remove skills. Use the skills already vendored under `./skills/` as-is. Once `sk` is feature‑complete, you may use it to install/upgrade skills and maintain `skills.lock.json`.
-
-For now, these skills were manually copied from `../dumbwaiter/skills`; their front‑matter and content are preserved under `./skills/<folder>/SKILL.md`.
