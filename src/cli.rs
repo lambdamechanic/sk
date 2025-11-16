@@ -182,4 +182,12 @@ pub enum RepoCmd {
         #[arg(long)]
         json: bool,
     },
+    #[command(about = "Remove a cached repo entry")]
+    Remove {
+        target: String,
+        #[arg(long, help = "Use HTTPS when resolving @owner/repo shorthand")]
+        https: bool,
+        #[arg(long)]
+        json: bool,
+    },
 }
