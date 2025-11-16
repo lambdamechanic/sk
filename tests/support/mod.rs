@@ -255,6 +255,18 @@ impl CliFixture {
         cmd
     }
 
+    pub fn sk_process(&self) -> Command {
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_sk"));
+        cmd.current_dir(&self.project)
+            .env("SK_CACHE_DIR", &self.cache_base)
+            .env("SK_CONFIG_DIR", &self.config_dir)
+            .env("GIT_AUTHOR_NAME", "Test User")
+            .env("GIT_AUTHOR_EMAIL", "test@example.com")
+            .env("GIT_COMMITTER_NAME", "Test User")
+            .env("GIT_COMMITTER_EMAIL", "test@example.com");
+        cmd
+    }
+
     pub fn sk_success(&self, args: &[&str]) {
         let out = self.sk_cmd().args(args).output().unwrap();
         assert!(

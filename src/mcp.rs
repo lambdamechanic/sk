@@ -177,7 +177,7 @@ impl McpServer {
                             "name": "sk-mcp",
                             "version": env!("CARGO_PKG_VERSION"),
                         },
-                        "instructions": "Use skills.list to enumerate available repo skills and skills.search to find a relevant skill by keyword."
+                        "instructions": "Start every task with skills.search to confirm whether a repo skill applies, then use skills.list or skills.show to pull the relevant body text when needed."
                     });
                     send_response(id, result, writer)?;
                 }
@@ -237,6 +237,13 @@ impl McpServer {
                     serde_json::from_value(parsed.arguments.unwrap_or(Value::Null))
                         .context("invalid arguments for skills.search")?;
                 let payload = self.search_skills(args)?;
+                Ok(payload)
+            }
+            "skills.show" => {
+                let args: ShowArgs =
+                    serde_json::from_value(parsed.arguments.unwrap_or(Value::Null))
+                        .context("invalid arguments for skills.show")?;
+                let payload = self.show_skill(args)?;
                 Ok(payload)
             }
             other => Err(anyhow!("unknown tool: {other}")),
@@ -350,6 +357,41 @@ impl McpServer {
     fn relative_skills_root(&self) -> String {
         relative_path(&self.skills_root, &self.project_root)
     }
+
+    fn show_skill(&self, args: ShowArgs) -> Result<Value> {
+        let raw = args.skill_name.trim();
+        if raw.is_empty() {
+            anyhow::bail!("skillName must not be empty");
+        }
+        let skills = scan_skills(&self.project_root, &self.skills_root)?;
+        let Some(record) = skills
+            .into_iter()
+            .find(|skill| skill.meta.name.eq_ignore_ascii_case(raw))
+        else {
+            anyhow::bail!("unknown skill: {raw}");
+        };
+        let detail = record.to_detail();
+        let body_text = detail.body.clone();
+        let heading = format!(
+            "{} ({}) — {}",
+            detail.install_name, detail.name, detail.description
+        );
+        Ok(json!({
+            "content": [
+                {
+                    "type": "text",
+                    "text": heading
+                },
+                {
+                    "type": "text",
+                    "text": body_text
+                }
+            ],
+            "structuredContent": {
+                "skill": detail
+            }
+        }))
+    }
 }
 
 #[derive(Deserialize)]
@@ -371,6 +413,12 @@ struct SearchArgs {
     query: String,
     #[serde(default)]
     limit: Option<usize>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ShowArgs {
+    skill_name: String,
 }
 
 #[derive(Serialize)]
@@ -402,6 +450,23 @@ fn tool_definitions() -> Vec<Value> {
                         "description": "Include the SKILL.md body (without YAML front-matter) in the structured response."
                     }
                 },
+                "additionalProperties": false
+            }
+        }),
+        json!({
+            "name": "skills.show",
+            "title": "Show a skill",
+            "description": "Return the metadata and full body of a single skill by its SKILL.md front-matter name.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "skillName": {
+                        "type": "string",
+                        "description": "Front-matter name to open (e.g., landing-the-plane).",
+                        "minLength": 1
+                    }
+                },
+                "required": ["skillName"],
                 "additionalProperties": false
             }
         }),
