@@ -141,6 +141,18 @@ Drop something like this into `AGENTS.md`:
 
 That paragraph solves the “chicken-and-egg” problem: the agent reads the policy first, makes a single MCP call to find out what’s available, and only then starts reasoning about the actual task.
 
+### Wire Codex (or any MCP client) into `sk`
+
+1. Make sure `sk` is on your `$PATH` (`cargo install sk` if needed) and that you run the MCP server from this repository’s root so it can find `.git` and the vendored `skills/` directory.
+2. Register the server with Codex (one time per machine) so agents can call `skills.list`, `skills.search`, and `skills.show` via MCP:
+
+   ```bash
+   codex mcp add sk-skills -- bash -lc 'cd /home/mark/lambdalabs/sk && sk mcp-server'
+   ```
+
+   Replace the path with your local checkout if it differs. After running the command you can confirm the registration with `codex mcp list`.
+3. When you start a Codex (or Claude) session in this repo, remind the agent that the `sk-skills` MCP is available and should be called before planning. The `skills.search` tool is ideal for “what skills apply to <task>?” checks; `skills.list` and `skills.show` return complete metadata/bodies when you already know the name.
+
 ## Command cheat sheet
 | Command | Use it when |
 | --- | --- |

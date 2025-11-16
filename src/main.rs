@@ -18,10 +18,13 @@ mod upgrade;
 
 use anyhow::{bail, Context, Result};
 use clap::Parser;
+use owo_colors::OwoColorize;
 
 use crate::cli::{Cli, Commands, ConfigCmd, RepoCmd, TemplateCmd};
 use serde::Serialize;
 use std::collections::HashSet;
+use std::io::IsTerminal;
+use unicode_width::UnicodeWidthStr;
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -226,22 +229,44 @@ fn cmd_list(_root_flag: Option<&str>, json: bool) -> Result<()> {
     let rows: Vec<ListRow> = lf
         .skills
         .iter()
-        .map(|skill| ListRow {
-            install_name: skill.install_name.clone(),
-            repo: format_repo_id(skill),
-            skill_path: skill.source.skill_path().to_string(),
-            description: load_description(&install_root, skill),
+        .map(|skill| {
+            let (display_name, description) = match load_skill_meta(&install_root, skill) {
+                Some(meta) => (meta.name, meta.description),
+                None => (skill.install_name.clone(), String::new()),
+            };
+            ListRow {
+                install_name: skill.install_name.clone(),
+                display_name,
+                repo: format_repo_id(skill),
+                skill_path: skill.source.skill_path().to_string(),
+                description,
+            }
         })
         .collect();
 
     if json {
         println!("{}", serde_json::to_string_pretty(&rows)?);
     } else {
+        let stdout_is_tty = std::io::stdout().is_terminal();
+        let max_name_width = rows
+            .iter()
+            .map(|row| UnicodeWidthStr::width(row.display_name.as_str()))
+            .max()
+            .unwrap_or(0);
         for row in rows {
-            println!(
-                "{}\t{}\t{}\t{}",
-                row.install_name, row.repo, row.skill_path, row.description
-            );
+            let name_width = UnicodeWidthStr::width(row.display_name.as_str());
+            let colored_name = if stdout_is_tty {
+                row.display_name.clone().bold().bright_cyan().to_string()
+            } else {
+                row.display_name.clone()
+            };
+            if row.description.is_empty() {
+                println!("{}", colored_name);
+            } else {
+                let gap = max_name_width.saturating_sub(name_width) + 2;
+                let padding = " ".repeat(gap);
+                println!("{}{}{}", colored_name, padding, row.description);
+            }
         }
     }
     Ok(())
@@ -251,6 +276,8 @@ fn cmd_list(_root_flag: Option<&str>, json: bool) -> Result<()> {
 struct ListRow {
     #[serde(rename = "installName")]
     install_name: String,
+    #[serde(skip_serializing)]
+    display_name: String,
     repo: String,
     #[serde(rename = "skillPath")]
     skill_path: String,
@@ -271,12 +298,12 @@ fn format_repo_id(skill: &lock::LockSkill) -> String {
     }
 }
 
-fn load_description(install_root: &std::path::Path, skill: &lock::LockSkill) -> String {
+fn load_skill_meta(
+    install_root: &std::path::Path,
+    skill: &lock::LockSkill,
+) -> Option<skills::SkillMeta> {
     let skill_md = install_root.join(&skill.install_name).join("SKILL.md");
-    match crate::skills::parse_frontmatter_file(&skill_md) {
-        Ok(meta) => meta.description,
-        Err(_) => String::new(),
-    }
+    crate::skills::parse_frontmatter_file(&skill_md).ok()
 }
 
 #[derive(Serialize)]
