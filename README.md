@@ -131,6 +131,16 @@ make qlty-smells               # blocking (use make qlty-smells-advisory for war
 - User config lives in `~/.config/sk/config.json` (override with `SK_CONFIG_DIR`). Keys: `default_root`, `default_repo`, `template_source`, `protocol` (`ssh` or `https`), `default_host`, `github_user`.
 - Every skill subdirectory must contain `SKILL.md` with YAML front-matter that declares `name` and `description`.
 
+## Encourage agents to bootstrap the skills MCP
+
+An MCP server can’t force a model to call it—you have to ask your agents explicitly. We recommend adding a short policy blurb to `AGENTS.md` (or whichever system prompt you use) that makes “run `skills.search`/`skills.list` before you start” part of the default ritual. Mentioning it in README helps teammates keep the policy consistent across repos.
+
+Drop something like this into `AGENTS.md`:
+
+> **Skills bootstrap checklist** — At the top of every session, call the repo-scoped skills MCP once to discover local helpers. Run `skills.search` with a few task keywords (or `skills.list` if you need the catalog) and skim the results before writing a plan. Reference any relevant skills in your response. Skip this step only if there are zero skills installed.
+
+That paragraph solves the “chicken-and-egg” problem: the agent reads the policy first, makes a single MCP call to find out what’s available, and only then starts reasoning about the actual task.
+
 ## Command cheat sheet
 | Command | Use it when |
 | --- | --- |

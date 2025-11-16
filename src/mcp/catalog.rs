@@ -28,6 +28,17 @@ impl SkillRecord {
         }
     }
 
+    pub(crate) fn to_detail(&self) -> SkillDetail {
+        SkillDetail {
+            install_name: self.install_name.clone(),
+            name: self.meta.name.clone(),
+            description: self.meta.description.clone(),
+            skill_path: self.skill_path.clone(),
+            skill_file: self.skill_file.clone(),
+            body: self.body.clone(),
+        }
+    }
+
     pub(crate) fn score_for_tokens(&self, tokens: &[String]) -> Option<SearchMatch> {
         let mut score = 0;
         for token in tokens {
@@ -63,6 +74,16 @@ pub(crate) struct SkillSummary {
     pub(crate) skill_file: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) body: Option<String>,
+}
+
+#[derive(Serialize)]
+pub(crate) struct SkillDetail {
+    pub(crate) install_name: String,
+    pub(crate) name: String,
+    pub(crate) description: String,
+    pub(crate) skill_path: String,
+    pub(crate) skill_file: String,
+    pub(crate) body: String,
 }
 
 pub(crate) struct SearchMatch {
