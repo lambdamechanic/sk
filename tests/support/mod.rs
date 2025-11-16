@@ -267,6 +267,10 @@ impl CliFixture {
         cmd
     }
 
+    pub fn cache_root(&self) -> &Path {
+        &self.cache_base
+    }
+
     pub fn sk_success(&self, args: &[&str]) {
         let out = self.sk_cmd().args(args).output().unwrap();
         assert!(

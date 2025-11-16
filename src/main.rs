@@ -427,17 +427,12 @@ struct RemoteTip {
 }
 
 fn resolve_remote_tip(skill: &lock::LockSkill) -> Result<RemoteTip> {
-    let spec = skill.source.repo_spec();
+    let spec = skill.source.repo_spec_owned();
     let cache_dir =
         paths::resolve_or_primary_cache_path(&spec.url, &spec.host, &spec.owner, &spec.repo);
-    if !cache_dir.exists() {
-        bail!(
-            "cache for {} missing; run `sk update` first",
-            format_repo_id(skill)
-        );
-    }
-    let owned = skill.source.repo_spec_owned();
-    let branch = git::detect_or_set_default_branch(&cache_dir, &owned)?;
+    git::ensure_cached_repo(&cache_dir, &spec)
+        .with_context(|| format!("refreshing cache for {}", format_repo_id(skill)))?;
+    let branch = git::detect_or_set_default_branch(&cache_dir, &spec)?;
     let tip = git::rev_parse(&cache_dir, &format!("refs/remotes/origin/{branch}"))?;
     Ok(RemoteTip {
         cache_dir,
