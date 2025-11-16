@@ -70,12 +70,11 @@ pub fn run_install(args: InstallArgs) -> Result<()> {
         bail!("Lockfile already contains skill with installName '{install_name}'");
     }
 
+    lf.ensure_repo_entry(&spec);
+
     let entry = lock::LockSkill {
         install_name: install_name.to_string(),
-        source: lock::Source {
-            spec,
-            skill_path: chosen.skill_path.clone(),
-        },
+        source: lock::Source::new(spec, chosen.skill_path.clone()),
         legacy_ref: None,
         commit: commit.clone(),
         digest: digest.clone(),

@@ -365,12 +365,10 @@ impl<'a> SyncSession<'a> {
     }
 
     fn write_lock_entry(&mut self, final_commit: String, digest: String) -> Result<()> {
+        self.lockfile.ensure_repo_entry(&self.target.spec);
         let entry = lock::LockSkill {
             install_name: self.args.installed_name.to_string(),
-            source: lock::Source {
-                spec: self.target.spec.clone(),
-                skill_path: self.target.skill_path.clone(),
-            },
+            source: lock::Source::new(self.target.spec.clone(), self.target.skill_path.clone()),
             legacy_ref: None,
             commit: final_commit,
             digest,

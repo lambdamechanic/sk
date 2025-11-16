@@ -47,12 +47,21 @@ fn sync_back_defaults_to_config_repo_and_install_name() {
         .find(|entry| entry.get("installName") == Some(&"local-default".into()))
         .expect("lock entry for local-default");
     assert_eq!(
-        entry["source"]["url"].as_str().unwrap(),
-        target_url.as_str()
+        entry["source"]["repoKey"].as_str().unwrap(),
+        "local/remotes/skills-default"
     );
     assert_eq!(
         entry["source"]["skillPath"].as_str().unwrap(),
         "local-default"
+    );
+
+    let repos = lock["repos"]["entries"].as_array().unwrap();
+    assert!(
+        repos
+            .iter()
+            .any(|repo| repo["url"].as_str() == Some(target_url.as_str())),
+        "expected repo entry for default repo: {:?}",
+        repos
     );
 }
 

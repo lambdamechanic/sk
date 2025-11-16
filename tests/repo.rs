@@ -1,3 +1,4 @@
+use serde_json::Value;
 use std::fs;
 
 #[path = "support/mod.rs"]
@@ -14,9 +15,16 @@ fn repo_add_and_catalog_lists_skills() {
 
     fx.sk_success(&["repo", "add", &url, "--alias", "demo"]);
 
-    let registry = fx.project.join("skills.repos.json");
-    let registry_contents = fs::read_to_string(&registry).unwrap();
-    assert!(registry_contents.contains("\"demo\""));
+    let lock_text = fs::read_to_string(fx.project.join("skills.lock.json")).unwrap();
+    let lock: Value = serde_json::from_str(&lock_text).unwrap();
+    let repos = lock["repos"]["entries"]
+        .as_array()
+        .expect("lockfile repos array");
+    assert!(
+        repos.iter().any(|entry| entry["alias"] == "demo"),
+        "expected 'demo' alias in lockfile repos: {:?}",
+        repos
+    );
 
     let catalog = fx.run_json(&["repo", "catalog", "demo", "--json"]);
     let entries = catalog.as_array().expect("catalog json array");
@@ -117,10 +125,15 @@ fn repo_remove_drops_registered_alias() {
     fx.sk_success(&["repo", "add", &remote.file_url(), "--alias", "remove-me"]);
     fx.sk_success(&["repo", "remove", "remove-me"]);
 
-    let registry = fs::read_to_string(fx.project.join("skills.repos.json")).unwrap();
+    let lock_text = fs::read_to_string(fx.project.join("skills.lock.json")).unwrap();
+    let lock: Value = serde_json::from_str(&lock_text).unwrap();
+    let repos = lock["repos"]["entries"]
+        .as_array()
+        .expect("repos array after removal");
     assert!(
-        !registry.contains("remove-me"),
-        "registry should not list alias after removal: {registry}"
+        repos.iter().all(|entry| entry["alias"] != "remove-me"),
+        "lockfile should not list alias after removal: {:?}",
+        repos
     );
 }
 

@@ -89,9 +89,16 @@ fn cache_dir_for_first_skill(lock: Json, cache_root: &std::path::Path) -> std::p
         .and_then(|arr| arr.first())
         .expect("lock contains at least one skill");
     let source = &skill["source"];
-    let host = source["host"].as_str().expect("host");
-    let owner = source["owner"].as_str().expect("owner");
-    let repo = source["repo"].as_str().expect("repo");
-    let url = source["url"].as_str().expect("url");
+    let repo_key = source["repoKey"].as_str().expect("repoKey");
+    let mut parts = repo_key.splitn(3, '/');
+    let host = parts.next().expect("host");
+    let owner = parts.next().expect("owner");
+    let repo = parts.next().expect("repo segment");
+    let repos = lock["repos"]["entries"].as_array().expect("repos array");
+    let url = repos
+        .iter()
+        .find(|entry| entry["key"] == repo_key)
+        .and_then(|entry| entry["url"].as_str())
+        .expect("repo url");
     cache_repo_path(cache_root, host, owner, repo, url)
 }
