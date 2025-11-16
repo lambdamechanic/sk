@@ -199,23 +199,35 @@ impl DoctorState {
             return Ok(());
         }
 
-        let mut lf_new = self.lockfile.clone();
-        if !self.orphans_to_drop.is_empty() {
-            let before = lf_new.skills.len();
-            lf_new
-                .skills
-                .retain(|s| !self.orphans_to_drop.contains(&update::lock_entry_key(s)));
-            let removed = before - lf_new.skills.len();
+        let orphans = self.orphans_to_drop.clone();
+        let (removed, normalized) = lock::edit_lockfile(&self.lock_path, |lf| {
+            let before = lf.skills.len();
+            if !orphans.is_empty() {
+                lf.skills
+                    .retain(|s| !orphans.contains(&update::lock_entry_key(s)));
+            }
+            let removed = before - lf.skills.len();
+            let before_names: Vec<_> = lf.skills.iter().map(|s| s.install_name.clone()).collect();
+            lf.skills
+                .sort_by(|a, b| a.install_name.cmp(&b.install_name));
+            let after_names: Vec<_> = lf.skills.iter().map(|s| s.install_name.clone()).collect();
+            let normalized = removed > 0 || after_names != before_names;
+            if normalized {
+                lf.generated_at = Utc::now().to_rfc3339();
+            }
+            Ok((removed, normalized))
+        })?;
+
+        if removed > 0 {
             println!("Removed {removed} orphan lock entries.");
             self.had_issues = true;
         }
-        lf_new
-            .skills
-            .sort_by(|a, b| a.install_name.cmp(&b.install_name));
-        lf_new.generated_at = Utc::now().to_rfc3339();
-        if serde_json::to_string(&lf_new)? != serde_json::to_string(&self.lockfile)? {
-            crate::lock::save_lockfile(&self.lock_path, &lf_new)?;
+        if normalized {
             println!("Normalized lockfile (ordering/timestamps).");
+            self.had_issues = true;
+        }
+        if removed > 0 || normalized {
+            self.lockfile = lock::Lockfile::load(&self.lock_path)?;
         }
         Ok(())
     }

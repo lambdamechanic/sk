@@ -24,7 +24,7 @@ pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
     if !lock_path.exists() {
         bail!("no lockfile found");
     }
-    let mut lf = lock::Lockfile::load(&lock_path)?;
+    let lf = lock::Lockfile::load(&lock_path)?;
 
     let targets = resolve_targets(&lf, &args)?;
     let upgrading_all = args.target == "--all";
@@ -60,8 +60,10 @@ pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
     let staging = TempDir::new_in(&project_root).context("create staging dir")?;
     let staged = stage_upgrades(staging.path(), &plan)?;
     let updates = apply_staged_upgrades(&staged)?;
-    apply_updates_to_lockfile(&mut lf, &updates)?;
-    lock::save_lockfile(&lock_path, &lf)?;
+    lock::edit_lockfile(&lock_path, |lf| {
+        apply_updates_to_lockfile(lf, &updates)?;
+        Ok(())
+    })?;
 
     if upgrading_all {
         print_skipped(&skipped_modified);

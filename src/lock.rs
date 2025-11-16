@@ -356,6 +356,33 @@ pub fn save_lockfile(path: &Path, lf: &Lockfile) -> Result<()> {
     Ok(())
 }
 
+pub fn edit_lockfile<F, T>(path: &Path, mutate: F) -> Result<T>
+where
+    F: FnOnce(&mut Lockfile) -> Result<T>,
+{
+    let existed = path.exists();
+    let mut lf = if existed {
+        Lockfile::load(path)?
+    } else {
+        Lockfile::empty_now()
+    };
+    let before = if existed {
+        Some(serde_json::to_vec(&lf)?)
+    } else {
+        None
+    };
+    let result = mutate(&mut lf)?;
+    let after = serde_json::to_vec(&lf)?;
+    let changed = match before {
+        Some(bytes) => bytes != after,
+        None => true,
+    };
+    if changed {
+        save_lockfile(path, &lf)?;
+    }
+    Ok(result)
+}
+
 pub fn repo_key(spec: &crate::git::RepoSpec) -> String {
     format!("{}/{}/{}", spec.host, spec.owner, spec.repo)
 }

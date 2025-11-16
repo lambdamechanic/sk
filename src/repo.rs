@@ -48,22 +48,21 @@ pub fn run_repo_add(args: RepoAddArgs) -> Result<()> {
         .unwrap_or_else(|| preferred_alias(&spec));
 
     let lock_path = project_root.join("skills.lock.json");
-    let mut lockfile = lock::Lockfile::load_or_empty(&lock_path)?;
-    ensure_alias_available(&lockfile.repos, &alias, None)?;
-    let key = lock::repo_key(&spec);
-    if let Some(existing) = lockfile.repos.entry_by_key(&key) {
-        bail!(
-            "repo {}/{} already registered under alias '{}'",
-            spec.owner,
-            spec.repo,
-            existing.alias
-        );
-    }
-    lockfile
-        .repos
-        .insert_if_missing(&spec, Some(alias.clone()), None);
-    lockfile.generated_at = Utc::now().to_rfc3339();
-    lock::save_lockfile(&lock_path, &lockfile)?;
+    lock::edit_lockfile(&lock_path, |lf| {
+        ensure_alias_available(&lf.repos, &alias, None)?;
+        let key = lock::repo_key(&spec);
+        if let Some(existing) = lf.repos.entry_by_key(&key) {
+            bail!(
+                "repo {}/{} already registered under alias '{}'",
+                spec.owner,
+                spec.repo,
+                existing.alias
+            );
+        }
+        lf.repos.insert_if_missing(&spec, Some(alias.clone()), None);
+        lf.generated_at = Utc::now().to_rfc3339();
+        Ok(())
+    })?;
 
     println!("Registered repo '{alias}' -> {}:{}", spec.host, spec.url);
     Ok(())
@@ -217,13 +216,16 @@ pub fn run_repo_remove(args: RepoRemoveArgs) -> Result<()> {
     let project_root = git::ensure_git_repo()?;
     let cfg = config::load_or_default()?;
     let lock_path = project_root.join("skills.lock.json");
-    let mut lockfile = lock::Lockfile::load_or_empty(&lock_path)?;
 
-    let removed = remove_repo_entry(&mut lockfile, args.target, &cfg, args.https)?;
+    let removed = lock::edit_lockfile(&lock_path, |lf| {
+        let removed = remove_repo_entry(lf, args.target, &cfg, args.https)?;
+        if removed.is_some() {
+            lf.generated_at = Utc::now().to_rfc3339();
+        }
+        Ok(removed)
+    })?;
     match removed {
         Some(entry) => {
-            lockfile.generated_at = Utc::now().to_rfc3339();
-            lock::save_lockfile(&lock_path, &lockfile)?;
             if args.json {
                 println!(
                     "{}",

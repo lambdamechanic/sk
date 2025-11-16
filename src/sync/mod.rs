@@ -365,22 +365,51 @@ impl<'a> SyncSession<'a> {
     }
 
     fn write_lock_entry(&mut self, final_commit: String, digest: String) -> Result<()> {
-        self.lockfile.ensure_repo_entry(&self.target.spec);
-        let entry = lock::LockSkill {
-            install_name: self.args.installed_name.to_string(),
-            source: lock::Source::new(self.target.spec.clone(), self.target.skill_path.clone()),
-            legacy_ref: None,
-            commit: final_commit,
-            digest,
-            installed_at: Utc::now().to_rfc3339(),
-        };
-        if let Some(idx) = self.target.lock_index {
-            self.lockfile.skills[idx] = entry;
-        } else {
-            self.lockfile.skills.push(entry);
-        }
-        self.lockfile.generated_at = Utc::now().to_rfc3339();
-        lock::save_lockfile(&self.lock_path, &self.lockfile)
+        let install_name = self.args.installed_name.to_string();
+        let spec = self.target.spec.clone();
+        let skill_path = self.target.skill_path.clone();
+        let lock_index = self.target.lock_index;
+        lock::edit_lockfile(&self.lock_path, |lf| {
+            lf.ensure_repo_entry(&spec);
+            let entry = lock::LockSkill {
+                install_name: install_name.clone(),
+                source: lock::Source::new(spec.clone(), skill_path.clone()),
+                legacy_ref: None,
+                commit: final_commit.clone(),
+                digest: digest.clone(),
+                installed_at: Utc::now().to_rfc3339(),
+            };
+            if let Some(idx) = lock_index {
+                if lf
+                    .skills
+                    .get(idx)
+                    .map(|s| s.install_name == install_name)
+                    .unwrap_or(false)
+                {
+                    lf.skills[idx] = entry;
+                } else {
+                    upsert_lock_entry(lf, entry);
+                }
+            } else {
+                upsert_lock_entry(lf, entry);
+            }
+            lf.generated_at = Utc::now().to_rfc3339();
+            Ok(())
+        })?;
+        self.lockfile = lock::Lockfile::load(&self.lock_path)?;
+        Ok(())
+    }
+}
+
+fn upsert_lock_entry(lf: &mut lock::Lockfile, entry: lock::LockSkill) {
+    if let Some(idx) = lf
+        .skills
+        .iter()
+        .position(|s| s.install_name == entry.install_name)
+    {
+        lf.skills[idx] = entry;
+    } else {
+        lf.skills.push(entry);
     }
 }
 
