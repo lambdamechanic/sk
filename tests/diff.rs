@@ -24,8 +24,8 @@ fn diff_reports_clean_install() {
     );
     let stdout = stdout_string(&output);
     assert!(
-        stdout.contains("(no differences)"),
-        "expected clean diff output:\n{}",
+        stdout.trim().is_empty(),
+        "expected no output for clean installs:\n{}",
         stdout
     );
 }
@@ -46,6 +46,11 @@ fn diff_shows_remote_updates_after_cache_refresh() {
         output.stderr
     );
     let stdout = stdout_string(&output);
+    assert!(
+        stdout.contains("==> demo"),
+        "expected diff header to mention the skill:\n{}",
+        stdout
+    );
     assert!(
         stdout.contains("+v2"),
         "expected diff to show remote additions:\n{}",
@@ -72,8 +77,8 @@ fn diff_recovers_missing_cache() {
     );
     let stdout = stdout_string(&output);
     assert!(
-        stdout.contains("(no differences)"),
-        "expected clean diff output after re-cloning the cache:\n{}",
+        stdout.trim().is_empty(),
+        "expected no output after cache recovery when no diff exists:\n{}",
         stdout
     );
 }
