@@ -26,8 +26,16 @@ Tools overview
 
 Selectors and conditions (GitHub)
 - selector: `{ "owner": "ORG", "repo": "REPO", "pr": 123 }`
-- condition: one of `checks_succeeded`, `checks_failed`, `pr_approved`, `changes_requested`, `workflow_completed`, `pr_merged`, `comment_received`
-  - For `comment_received`, you may pass `filters`: `{ since: <RFC3339|epoch>, include_bots: true, author_allowlist?: ["alice"], author_denylist?: ["bot"] }` to narrow notifications.
+- Supported `condition` tokens:
+  - `checks_succeeded` — combined status success
+  - `checks_failed` — combined status failure/error
+  - `pr_merged` — merged flag true
+  - `pr_approved` — at least one approved review
+  - `changes_requested` — an open review with changes requested
+  - `workflow_completed` — at least one completed workflow run
+  - `comment_received` — any new PR comment/review/reaction event (see streaming section below)
+
+For `comment_received`, optional `filters` refine which events count. If omitted, `since` defaults to the wait's `created_at` timestamp so Dumbwaiter streams everything posted after the wait was created.
 
 Happy-path flow
 1) Start wait
@@ -48,12 +56,33 @@ Guidelines
 - On timeouts, return `timeout` with elapsed seconds; let the caller decide next steps.
 - Security: never echo tokens; require least scopes.
 
+## Streaming GitHub comment events
+
+Set `condition` to `comment_received` plus optional filters:
+
+```json
+{
+  "provider": "github",
+  "selector": { "owner": "acme", "repo": "widgets", "pr": 42 },
+  "condition": "comment_received",
+  "filters": {
+    "since": "2025-01-01T00:00:00Z",
+    "include_bots": true,
+    "author_allowlist": ["alice"],
+    "author_denylist": ["bot"]
+  }
+}
+```
+
+`wait.await` emits `notify_progress` for every matching comment/review/reaction (body + URL + reaction counts + code context) before returning the terminal payload that mirrors the streamed events. Use this when an orchestrator needs to react to each individual discussion event.
+
 Examples
 - “Wait for PR 42 in acme/widgets until checks pass.”
   - start → `{ provider: "github", selector: { owner: "acme", repo: "widgets", pr: 42 }, condition: "checks_succeeded" }`
   - await → `{ wait_id }`
-- “Wait for any new comment on PR 42 since midnight UTC.”
+- “Stream every new comment on PR 42 since midnight UTC.”
   - start → `{ provider: "github", selector: { owner: "acme", repo: "widgets", pr: 42 }, condition: "comment_received", filters: { since: "2025-01-01T00:00:00Z", include_bots: true } }`
+  - await → receives per-comment progress events plus the final summary payload
 
 Troubleshooting
 - `unknown` status: the `wait_id` was not found (DB purge or wrong project).
