@@ -283,3 +283,32 @@ pub fn has_object(cache_dir: &Path, oid: &str) -> Result<bool> {
         .context("git cat-file failed")?;
     Ok(out.status.success())
 }
+
+pub fn diff_includes_path(
+    cache_dir: &Path,
+    base: &str,
+    head: &str,
+    rel_path: &str,
+) -> Result<bool> {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(cache_dir)
+        .arg("diff")
+        .arg("--name-only")
+        .arg(base)
+        .arg(head)
+        .arg("--")
+        .arg(rel_path)
+        .output()
+        .context("git diff --name-only failed")?;
+    if !out.status.success() {
+        bail!(
+            "git diff --name-only {} {} -- {} failed",
+            base,
+            head,
+            rel_path
+        );
+    }
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    Ok(stdout.lines().any(|line| !line.trim().is_empty()))
+}
