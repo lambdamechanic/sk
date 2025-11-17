@@ -141,21 +141,31 @@ fn cmd_repo(cmd: RepoCmd) -> Result<()> {
             target,
             https,
             json,
-        } => repo::run_repo_catalog(repo::RepoCatalogArgs {
-            target: &target,
-            https,
-            json,
-        }),
+        } => {
+            warn_deprecated(
+                "repo catalog",
+                "sk repo search --repo <alias-or-repo> --all",
+            );
+            repo::run_repo_search(repo::RepoSearchArgs {
+                query: None,
+                target: Some(&target),
+                https,
+                json,
+                list_all: true,
+            })
+        }
         RepoCmd::Search {
             query,
             repo: target,
             https,
             json,
+            all,
         } => repo::run_repo_search(repo::RepoSearchArgs {
-            query: &query,
+            query: query.as_deref(),
             target: target.as_deref(),
             https,
             json,
+            list_all: all,
         }),
         RepoCmd::Remove {
             target,

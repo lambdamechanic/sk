@@ -196,7 +196,10 @@ pub enum RepoCmd {
         #[arg(long)]
         json: bool,
     },
-    #[command(about = "Show skills available within a repo")]
+    #[command(
+        hide = true,
+        about = "DEPRECATED: use `sk repo search --repo <alias-or-repo> --all` instead"
+    )]
     Catalog {
         target: String,
         #[arg(long, help = "Use HTTPS when resolving @owner/repo shorthand")]
@@ -204,15 +207,22 @@ pub enum RepoCmd {
         #[arg(long)]
         json: bool,
     },
-    #[command(about = "Search cached repos for matching skills")]
+    #[command(
+        about = "Search cached repos for matching skills (omit the query or pass --all to list every skill)"
+    )]
     Search {
-        query: String,
+        query: Option<String>,
         #[arg(long, help = "Limit search to a specific alias or repo input")]
         repo: Option<String>,
         #[arg(long, help = "Use HTTPS when resolving @owner/repo shorthand")]
         https: bool,
         #[arg(long)]
         json: bool,
+        #[arg(
+            long,
+            help = "List every skill in the targeted repo (replacement for `sk repo catalog`)"
+        )]
+        all: bool,
     },
     #[command(about = "Remove a cached repo entry")]
     Remove {

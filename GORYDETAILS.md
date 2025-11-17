@@ -5,9 +5,9 @@
 
 ```bash
 sk repo add @anthropics/skills --alias anthropic
-sk repo catalog anthropic                 # human-readable listing
+sk repo search --repo anthropic           # human-readable listing (replaces `repo catalog`)
 sk repo search "retro"                    # search across every cached repo
-sk repo catalog @anthropics/skills --json  # machine-readable listing for tooling
+sk repo search --repo @anthropics/skills --all --json  # machine-readable listing for tooling
 ```
 `sk update` refreshes every cached repo. All catalog files live under `~/.cache/sk/repos/<host>/<owner>/<repo>` unless you override `SK_CACHE_DIR`.
 
@@ -65,7 +65,7 @@ make qlty-smells               # blocking; use make qlty-smells-advisory for war
 | `sk repo add <repo> [--alias foo]` | Cache a remote repo (and record it in `skills.lock.json`’s repo registry) without installing a skill yet. |
 | `sk repo list [--json]` | Show cached repos plus total skills vs. installed counts; unreachable repos reuse cached counts and show a `*` next to the SKILLS column (`--json` prints the raw registry). |
 | `sk repo remove <alias-or-repo> [--json]` | Remove a cached repo entry by alias or repo spec when it’s no longer needed. |
-| `sk repo catalog <alias-or-repo> [--json]` | List every skill exposed by a cached repo before installing. |
+| `sk repo search --repo <alias-or-repo> [--all] [--json]` | List every skill exposed by a cached repo before installing (replacement for `sk repo catalog`). |
 | `sk repo search <query> [--repo alias] [--json]` | Search all cached repos (or a single repo via `--repo`) for matching skills. |
 | `sk update` | Refresh cached repos (safe to run on CI). |
 | `sk upgrade [--all or <name>] [--dry-run]` | Copy newer commits into the repo and update the lockfile. |

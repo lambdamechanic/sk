@@ -18,3 +18,7 @@ bd.db
 !*.jsonl
 !metadata.json
 !config.json
+
+# Ignore derived "left" exports (per-user dashboards)
+beads.left.jsonl
+beads.left.meta.json
