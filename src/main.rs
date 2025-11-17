@@ -381,8 +381,26 @@ fn cmd_status(names: &[String], root_flag: Option<&str>, json: bool) -> Result<(
 fn cmd_diff(names: &[String], root_flag: Option<&str>) -> Result<()> {
     let ctx = load_project_context(root_flag)?;
     let targets = select_skills(&ctx.lockfile.skills, names);
-    if targets.is_empty() {
-        return Ok(());
+    if names.is_empty() {
+        if targets.is_empty() {
+            return Ok(());
+        }
+    } else if targets.len() != names.len() {
+        let resolved: HashSet<&str> = targets.iter().map(|s| s.install_name.as_str()).collect();
+        let missing: Vec<&String> = names
+            .iter()
+            .filter(|name| !resolved.contains(name.as_str()))
+            .collect();
+        if !missing.is_empty() {
+            bail!(
+                "No installed skills matched: {}",
+                missing
+                    .into_iter()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
     }
     let repo_tips = resolve_remote_tips_for_targets(&targets);
     let stdout_is_tty = std::io::stdout().is_terminal();
