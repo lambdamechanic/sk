@@ -312,7 +312,7 @@ fn ensure_alias_available(
     if let Some(existing) = registry
         .entries
         .iter()
-        .find(|entry| entry.alias == alias && except_key.map_or(true, |key| entry.key != key))
+        .find(|entry| entry.alias == alias && except_key.is_none_or(|key| entry.key != key))
     {
         bail!(
             "alias '{}' already registered for repo {}/{}",
