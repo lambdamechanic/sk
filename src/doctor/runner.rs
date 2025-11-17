@@ -4,7 +4,6 @@ use anyhow::{bail, Context, Result};
 use chrono::Utc;
 use owo_colors::OwoColorize;
 use serde::Serialize;
-use serde_json;
 use std::collections::{HashMap, HashSet};
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
