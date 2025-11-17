@@ -320,7 +320,6 @@ impl Lockfile {
     pub fn ensure_repo_entry(&mut self, spec: &crate::git::RepoSpec) {
         self.repos.insert_if_missing(spec, None, None)
     }
-
 }
 
 pub fn save_lockfile(path: &Path, lf: &Lockfile) -> Result<()> {
