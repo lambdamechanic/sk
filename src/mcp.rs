@@ -2,32 +2,48 @@ mod catalog;
 mod transport;
 
 use crate::{config, git, paths};
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
 use catalog::{relative_path, scan_skills};
-use crossbeam_channel::{unbounded, RecvError, Sender};
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
+use rmcp::{
+    handler::server::{router::tool::ToolRouter, wrapper::Parameters, ServerHandler},
+    model::{
+        CallToolResult, Content, ListResourcesResult, PaginatedRequestParam, ProtocolVersion,
+        RawResource, ReadResourceRequestParam, ReadResourceResult, Resource, ResourceContents,
+        ServerCapabilities, ServerInfo,
+    },
+    service::{Peer, RoleServer, ServiceExt},
+    tool, tool_handler, tool_router,
+    transport::stdio,
+    ErrorData as McpError,
+};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::io::{BufWriter, Write};
-use std::path::PathBuf;
-use std::sync::mpsc as std_mpsc;
-use std::thread;
-use std::time::{Duration, Instant};
-use transport::{
-    relevant_event, send_error, send_notification, send_response, spawn_reader_thread,
+use std::{
+    path::PathBuf,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc as std_mpsc, Arc,
+    },
+    thread,
+    time::{Duration, Instant},
+};
+use tokio::{
+    runtime::Builder as TokioRuntimeBuilder,
+    sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
 };
 
-const DEFAULT_PROTOCOL_VERSION: &str = "2025-03-26";
 const MAX_SEARCH_LIMIT: usize = 25;
 const DEFAULT_SEARCH_LIMIT: usize = 10;
 const QUICKSTART_URI: &str = "sk://quickstart";
 const QUICKSTART_DOC: &str = include_str!("../docs/AGENT_QUICKSTART.md");
+const SERVER_INSTRUCTIONS: &str = "Start every task with skills_search to confirm whether a repo skill applies, then use skills_list or skills_show to pull the relevant body text when needed.";
 
 pub fn run_server(root_override: Option<&str>) -> Result<()> {
     let project_root = git::ensure_git_repo()?;
     let cfg = config::load_or_default()?;
-    let default_root = cfg.default_root.clone();
-    let install_root_rel = root_override.unwrap_or(&default_root);
+    let install_root_rel = root_override.unwrap_or(&cfg.default_root);
     let skills_root = paths::resolve_project_path(&project_root, install_root_rel);
     if !skills_root.exists() {
         anyhow::bail!(
@@ -38,292 +54,123 @@ pub fn run_server(root_override: Option<&str>) -> Result<()> {
                 .display()
         );
     }
-    let mut server = McpServer::new(project_root, skills_root);
-    server.run()
+    let server = SkMcpServer::new(project_root, skills_root);
+    let runtime = TokioRuntimeBuilder::new_multi_thread()
+        .enable_all()
+        .build()
+        .context("failed to build tokio runtime")?;
+    runtime.block_on(async move { serve_stdio(server).await })
 }
 
-struct McpServer {
-    project_root: PathBuf,
-    skills_root: PathBuf,
-    initialized: bool,
+async fn serve_stdio(server: SkMcpServer) -> Result<()> {
+    let running = server
+        .clone()
+        .serve(stdio())
+        .await
+        .context("failed to start MCP server")?;
+    let peer = running.peer().clone();
+    let initialized_flag = server.initialized.clone();
+    let (notify_tx, notify_rx) = mpsc::unbounded_channel();
+    let watcher = spawn_tool_watcher(server.skills_root.clone(), notify_tx)
+        .context("failed to start skills watcher")?;
+    let notify_task =
+        tokio::spawn(async move { forward_notifications(notify_rx, peer, initialized_flag).await });
+
+    let wait_result = running.waiting().await;
+    drop(watcher);
+    notify_task.abort();
+    match wait_result {
+        Ok(_) => Ok(()),
+        Err(err) => Err(err).context("server task failed"),
+    }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug, Clone, Copy)]
 enum NotificationEvent {
     ToolsListChanged,
 }
 
-impl McpServer {
+async fn forward_notifications(
+    mut rx: UnboundedReceiver<NotificationEvent>,
+    peer: Peer<RoleServer>,
+    initialized: Arc<AtomicBool>,
+) {
+    while let Some(event) = rx.recv().await {
+        if !initialized.load(Ordering::SeqCst) {
+            continue;
+        }
+        match event {
+            NotificationEvent::ToolsListChanged => {
+                if let Err(err) = peer.notify_tool_list_changed().await {
+                    eprintln!("failed to emit tools/list_changed notification: {err}");
+                    break;
+                }
+            }
+        }
+    }
+}
+
+fn spawn_tool_watcher(
+    skills_root: PathBuf,
+    tx: UnboundedSender<NotificationEvent>,
+) -> Result<RecommendedWatcher> {
+    let (watch_tx, watch_rx) = std_mpsc::channel();
+    let mut watcher = notify::recommended_watcher(move |res| {
+        let _ = watch_tx.send(res);
+    })?;
+    watcher.watch(&skills_root, RecursiveMode::Recursive)?;
+    thread::spawn(move || {
+        let debounce = Duration::from_millis(500);
+        let mut last_emit = Instant::now()
+            .checked_sub(debounce)
+            .unwrap_or_else(Instant::now);
+        while let Ok(event) = watch_rx.recv() {
+            match event {
+                Ok(evt) => {
+                    if transport::relevant_event(&evt.kind) {
+                        let now = Instant::now();
+                        if now.duration_since(last_emit) >= debounce {
+                            last_emit = now;
+                            let _ = tx.send(NotificationEvent::ToolsListChanged);
+                        }
+                    }
+                }
+                Err(err) => {
+                    eprintln!("watch error: {err}");
+                    break;
+                }
+            }
+        }
+    });
+    Ok(watcher)
+}
+
+#[derive(Clone)]
+struct SkMcpServer {
+    project_root: PathBuf,
+    skills_root: PathBuf,
+    tool_router: ToolRouter<Self>,
+    initialized: Arc<AtomicBool>,
+}
+
+impl SkMcpServer {
     fn new(project_root: PathBuf, skills_root: PathBuf) -> Self {
         Self {
             project_root,
             skills_root,
-            initialized: false,
+            tool_router: Self::tool_router(),
+            initialized: Arc::new(AtomicBool::new(false)),
         }
     }
 
-    fn run(&mut self) -> Result<()> {
-        let stdout = std::io::stdout();
-        let mut writer = BufWriter::new(stdout.lock());
-
-        let (frame_tx, frame_rx) = unbounded();
-        spawn_reader_thread(frame_tx.clone());
-
-        let (notify_tx, notify_rx) = unbounded();
-        let _watcher = self.spawn_watcher(notify_tx.clone())?;
-
-        loop {
-            crossbeam_channel::select! {
-                recv(frame_rx) -> msg => match msg {
-                    Ok(value) => {
-                        if let Err(err) = self.handle_frame(value, &mut writer) {
-                            eprintln!("mcp server error: {err:#}");
-                        }
-                    }
-                    Err(RecvError) => break,
-                },
-                recv(notify_rx) -> msg => match msg {
-                    Ok(event) => {
-                        if let Err(err) = self.handle_notification(event, &mut writer) {
-                            eprintln!("failed to emit notification: {err:#}");
-                        }
-                    }
-                    Err(RecvError) => break,
-                }
-            };
-            writer.flush()?;
-        }
-        Ok(())
+    fn relative_skills_root(&self) -> String {
+        relative_path(&self.skills_root, &self.project_root)
     }
 
-    fn spawn_watcher(&self, tx: Sender<NotificationEvent>) -> Result<RecommendedWatcher> {
-        let skills_root = self.skills_root.clone();
-        let (watch_tx, watch_rx) = std_mpsc::channel();
-        let mut watcher = notify::recommended_watcher(move |res| {
-            let _ = watch_tx.send(res);
-        })?;
-        watcher.watch(&skills_root, RecursiveMode::Recursive)?;
-
-        let debounce = Duration::from_millis(500);
-        thread::spawn(move || {
-            let mut last_emit = Instant::now()
-                .checked_sub(debounce)
-                .unwrap_or_else(Instant::now);
-            while let Ok(event) = watch_rx.recv() {
-                match event {
-                    Ok(evt) => {
-                        if relevant_event(&evt.kind) {
-                            let now = Instant::now();
-                            if now.duration_since(last_emit) >= debounce {
-                                last_emit = now;
-                                let _ = tx.send(NotificationEvent::ToolsListChanged);
-                            }
-                        }
-                    }
-                    Err(err) => eprintln!("watch error: {err}"),
-                }
-            }
-        });
-
-        Ok(watcher)
-    }
-
-    fn handle_notification(
-        &mut self,
-        event: NotificationEvent,
-        writer: &mut BufWriter<std::io::StdoutLock<'_>>,
-    ) -> Result<()> {
-        match event {
-            NotificationEvent::ToolsListChanged => {
-                if self.initialized {
-                    send_notification(
-                        writer,
-                        "notifications/tools/list_changed",
-                        json!({
-                            "reason": "skills directory changed"
-                        }),
-                    )?;
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn handle_frame(
-        &mut self,
-        value: Value,
-        writer: &mut BufWriter<std::io::StdoutLock<'_>>,
-    ) -> Result<()> {
-        let Some(method) = value
-            .get("method")
-            .and_then(|m| m.as_str())
-            .map(str::to_string)
-        else {
-            // Response destined for the client; ignore.
-            return Ok(());
-        };
-        let params = value.get("params").cloned().unwrap_or(Value::Null);
-        let id = value.get("id").cloned();
-        match method.as_str() {
-            "initialize" => {
-                if let Some(id) = id {
-                    self.initialized = true;
-                    let result = json!({
-                        "protocolVersion": DEFAULT_PROTOCOL_VERSION,
-                        "capabilities": {
-                            "tools": {
-                                "listChanged": false
-                            },
-                            "resources": {
-                                "listChanged": false
-                            }
-                        },
-                        "serverInfo": {
-                            "name": "sk",
-                            "version": env!("CARGO_PKG_VERSION"),
-                        },
-                        "instructions": "Start every task with skills_search to confirm whether a repo skill applies, then use skills_list or skills_show to pull the relevant body text when needed."
-                    });
-                    send_response(id, result, writer)?;
-                }
-            }
-            "notifications/initialized" => {}
-            "tools/list" => {
-                if let Some(id) = id {
-                    let result = json!({
-                        "tools": tool_definitions(),
-                    });
-                    send_response(id, result, writer)?;
-                }
-            }
-            "tools/call" => {
-                if let Some(id) = id {
-                    match self.handle_tools_call(params) {
-                        Ok(resp) => send_response(id, resp, writer)?,
-                        Err(err) => send_error(
-                            id,
-                            -32602,
-                            &format!("tool invocation failed: {err}"),
-                            None,
-                            writer,
-                        )?,
-                    }
-                }
-            }
-            "resources/list" => {
-                if let Some(id) = id {
-                    match self.handle_resources_list(params) {
-                        Ok(resp) => send_response(id, resp, writer)?,
-                        Err(err) => send_error(
-                            id,
-                            -32602,
-                            &format!("resources/list failed: {err}"),
-                            None,
-                            writer,
-                        )?,
-                    }
-                }
-            }
-            "resources/read" => {
-                if let Some(id) = id {
-                    match self.handle_resources_read(params) {
-                        Ok(resp) => send_response(id, resp, writer)?,
-                        Err(err) => send_error(
-                            id,
-                            -32001,
-                            &format!("resources/read failed: {err}"),
-                            None,
-                            writer,
-                        )?,
-                    }
-                }
-            }
-            _ => {
-                if let Some(id) = id {
-                    send_error(
-                        id,
-                        -32601,
-                        &format!("unsupported method: {method}"),
-                        None,
-                        writer,
-                    )?;
-                }
-            }
-        }
-        writer.flush()?;
-        Ok(())
-    }
-
-    fn handle_tools_call(&self, params: Value) -> Result<Value> {
-        let parsed: ToolCall = serde_json::from_value(params.clone())
-            .context("invalid tools/call payload (expected name + arguments)")?;
-        match parsed.name.as_str() {
-            "skills_list" => {
-                let args: ListArgs =
-                    serde_json::from_value(parsed.arguments.unwrap_or(Value::Null))
-                        .context("invalid arguments for skills_list")?;
-                let payload = self.list_skills(args)?;
-                Ok(payload)
-            }
-            "skills_search" => {
-                let args: SearchArgs =
-                    serde_json::from_value(parsed.arguments.unwrap_or(Value::Null))
-                        .context("invalid arguments for skills_search")?;
-                let payload = self.search_skills(args)?;
-                Ok(payload)
-            }
-            "skills_show" => {
-                let args: ShowArgs =
-                    serde_json::from_value(parsed.arguments.unwrap_or(Value::Null))
-                        .context("invalid arguments for skills_show")?;
-                let payload = self.show_skill(args)?;
-                Ok(payload)
-            }
-            other => Err(anyhow!("unknown tool: {other}")),
-        }
-    }
-
-    fn handle_resources_list(&self, params: Value) -> Result<Value> {
-        let ResourceListArgs { cursor } =
-            serde_json::from_value(params).context("invalid arguments for resources/list")?;
-        let _ = cursor;
-        Ok(json!({
-            "resources": [
-                {
-                    "uri": QUICKSTART_URI,
-                    "name": "sk Quickstart",
-                    "title": "sk Quickstart",
-                    "description": "Agent quickstart: install sk, cache Anthropic, publish + sync skills.",
-                    "mimeType": "text/markdown"
-                }
-            ]
-        }))
-    }
-
-    fn handle_resources_read(&self, params: Value) -> Result<Value> {
-        let args: ResourceReadArgs =
-            serde_json::from_value(params).context("invalid arguments for resources/read")?;
-        let uri = args.uri.trim();
-        if uri.is_empty() {
-            anyhow::bail!("uri must not be empty");
-        }
-        match uri {
-            QUICKSTART_URI => Ok(json!({
-                "contents": [{
-                    "uri": QUICKSTART_URI,
-                    "name": "sk Quickstart",
-                    "title": "sk Quickstart",
-                    "mimeType": "text/markdown",
-                    "text": QUICKSTART_DOC
-                }]
-            })),
-            other => anyhow::bail!("unknown resource: {other}"),
-        }
-    }
-
-    fn list_skills(&self, args: ListArgs) -> Result<Value> {
-        let skills = scan_skills(&self.project_root, &self.skills_root)?;
-        let filtered: Vec<_> = if let Some(query) = args.query.as_ref().map(|s| s.trim()) {
+    fn list_skills(&self, args: ListArgs) -> Result<CallToolResult, McpError> {
+        let skills =
+            scan_skills(&self.project_root, &self.skills_root).map_err(to_internal_error)?;
+        let filtered: Vec<_> = if let Some(query) = args.query.as_deref().map(str::trim) {
             if query.is_empty() {
                 skills
             } else {
@@ -336,9 +183,10 @@ impl McpServer {
         } else {
             skills
         };
+        let include_body = args.include_body.unwrap_or(false);
         let summaries: Vec<_> = filtered
             .iter()
-            .map(|skill| skill.to_summary(args.include_body.unwrap_or(false)))
+            .map(|skill| skill.to_summary(include_body))
             .collect();
         let summary_text = format!(
             "Found {} skill{} under {}",
@@ -346,36 +194,33 @@ impl McpServer {
             if summaries.len() == 1 { "" } else { "s" },
             self.relative_skills_root()
         );
-        Ok(json!({
-            "content": [
-                {
-                    "type": "text",
-                    "text": summary_text
-                }
-            ],
-            "structuredContent": {
-                "skills": summaries
-            }
-        }))
+        Ok(make_tool_result(
+            vec![Content::text(summary_text)],
+            json!({ "skills": summaries }),
+        ))
     }
 
-    fn search_skills(&self, args: SearchArgs) -> Result<Value> {
+    fn search_skills(&self, args: SearchArgs) -> Result<CallToolResult, McpError> {
         let query = args.query.trim();
         if query.is_empty() {
-            anyhow::bail!("query must not be empty");
+            return Err(McpError::invalid_params("query must not be empty", None));
         }
         let tokens: Vec<String> = query
             .split_whitespace()
             .map(|s| s.to_ascii_lowercase())
             .collect();
         if tokens.is_empty() {
-            anyhow::bail!("query must include at least one token");
+            return Err(McpError::invalid_params(
+                "query must include at least one token",
+                None,
+            ));
         }
         let limit = args
             .limit
             .unwrap_or(DEFAULT_SEARCH_LIMIT)
             .clamp(1, MAX_SEARCH_LIMIT);
-        let skills = scan_skills(&self.project_root, &self.skills_root)?;
+        let skills =
+            scan_skills(&self.project_root, &self.skills_root).map_err(to_internal_error)?;
         let mut hits: Vec<_> = skills
             .iter()
             .filter_map(|skill| skill.score_for_tokens(&tokens))
@@ -409,84 +254,164 @@ impl McpServer {
                 total
             )
         };
-        Ok(json!({
-            "content": [
-                {
-                    "type": "text",
-                    "text": text
-                }
-            ],
-            "structuredContent": {
+        Ok(make_tool_result(
+            vec![Content::text(text)],
+            json!({
                 "query": query,
                 "limit": limit,
                 "total": total,
                 "results": results
-            }
-        }))
+            }),
+        ))
     }
 
-    fn relative_skills_root(&self) -> String {
-        relative_path(&self.skills_root, &self.project_root)
-    }
-
-    fn show_skill(&self, args: ShowArgs) -> Result<Value> {
+    fn show_skill(&self, args: ShowArgs) -> Result<CallToolResult, McpError> {
         let raw = args.skill_name.trim();
         if raw.is_empty() {
-            anyhow::bail!("skillName must not be empty");
+            return Err(McpError::invalid_params(
+                "skillName must not be empty",
+                None,
+            ));
         }
-        let skills = scan_skills(&self.project_root, &self.skills_root)?;
+        let skills =
+            scan_skills(&self.project_root, &self.skills_root).map_err(to_internal_error)?;
         let Some(record) = skills
             .into_iter()
             .find(|skill| skill.meta.name.eq_ignore_ascii_case(raw))
         else {
-            anyhow::bail!("unknown skill: {raw}");
+            return Err(McpError::invalid_params(
+                format!("unknown skill: {raw}"),
+                None,
+            ));
         };
         let detail = record.to_detail();
-        let body_text = detail.body.clone();
         let heading = format!(
             "{} ({}) — {}",
             detail.install_name, detail.name, detail.description
         );
-        Ok(json!({
-            "content": [
-                {
-                    "type": "text",
-                    "text": heading
-                },
-                {
-                    "type": "text",
-                    "text": body_text
-                }
-            ],
-            "structuredContent": {
-                "skill": detail
-            }
-        }))
+        Ok(make_tool_result(
+            vec![Content::text(heading), Content::text(detail.body.clone())],
+            json!({ "skill": detail }),
+        ))
+    }
+
+    fn quickstart_resource(&self) -> Resource {
+        let mut raw = RawResource::new(QUICKSTART_URI, "sk-quickstart");
+        raw.title = Some("sk Quickstart".into());
+        raw.description =
+            Some("Agent quickstart: install sk, cache Anthropic, publish + sync skills.".into());
+        raw.mime_type = Some("text/markdown".into());
+        raw.size = Some(QUICKSTART_DOC.len() as u32);
+        Resource::new(raw, None)
     }
 }
 
-#[derive(Deserialize)]
-struct ToolCall {
-    name: String,
-    #[serde(default)]
-    arguments: Option<Value>,
+#[tool_router]
+impl SkMcpServer {
+    #[tool(
+        name = "skills_list",
+        description = "List installed skills, optionally filtered by name"
+    )]
+    async fn route_skills_list(
+        &self,
+        Parameters(args): Parameters<ListArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        self.list_skills(args)
+    }
+
+    #[tool(
+        name = "skills_search",
+        description = "Search skills stored under the repo's skills/ directory"
+    )]
+    async fn route_skills_search(
+        &self,
+        Parameters(args): Parameters<SearchArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        self.search_skills(args)
+    }
+
+    #[tool(
+        name = "skills_show",
+        description = "Show the full SKILL.md body for a named skill"
+    )]
+    async fn route_skills_show(
+        &self,
+        Parameters(args): Parameters<ShowArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        self.show_skill(args)
+    }
 }
 
-#[derive(Default, Deserialize)]
+#[tool_handler]
+impl ServerHandler for SkMcpServer {
+    fn get_info(&self) -> ServerInfo {
+        ServerInfo {
+            protocol_version: ProtocolVersion::V_2025_03_26,
+            capabilities: ServerCapabilities::builder()
+                .enable_tools()
+                .enable_tool_list_changed()
+                .enable_resources()
+                .build(),
+            server_info: rmcp::model::Implementation::from_build_env(),
+            instructions: Some(SERVER_INSTRUCTIONS.to_string()),
+        }
+    }
+
+    fn list_resources(
+        &self,
+        _request: Option<PaginatedRequestParam>,
+        _context: rmcp::service::RequestContext<RoleServer>,
+    ) -> impl std::future::Future<Output = Result<ListResourcesResult, McpError>> + Send + '_ {
+        let resource = self.quickstart_resource();
+        std::future::ready(Ok(ListResourcesResult::with_all_items(vec![resource])))
+    }
+
+    fn read_resource(
+        &self,
+        request: ReadResourceRequestParam,
+        _context: rmcp::service::RequestContext<RoleServer>,
+    ) -> impl std::future::Future<Output = Result<ReadResourceResult, McpError>> + Send + '_ {
+        std::future::ready(if request.uri == QUICKSTART_URI {
+            Ok(ReadResourceResult {
+                contents: vec![ResourceContents::TextResourceContents {
+                    uri: QUICKSTART_URI.to_string(),
+                    mime_type: Some("text/markdown".into()),
+                    text: QUICKSTART_DOC.to_string(),
+                    meta: None,
+                }],
+            })
+        } else {
+            Err(McpError::resource_not_found(
+                format!("unknown resource: {}", request.uri),
+                None,
+            ))
+        })
+    }
+
+    fn on_initialized(
+        &self,
+        _context: rmcp::service::NotificationContext<RoleServer>,
+    ) -> impl std::future::Future<Output = ()> + Send + '_ {
+        self.initialized.store(true, Ordering::SeqCst);
+        std::future::ready(())
+    }
+}
+
+#[derive(Default, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 struct ListArgs {
     query: Option<String>,
     include_body: Option<bool>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, JsonSchema)]
 struct SearchArgs {
     query: String,
     #[serde(default)]
     limit: Option<usize>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 struct ShowArgs {
     skill_name: String,
@@ -503,78 +428,15 @@ struct SearchHitPayload {
     excerpt: String,
 }
 
-#[derive(Default, Deserialize)]
-struct ResourceListArgs {
-    #[serde(default)]
-    cursor: Option<String>,
+fn make_tool_result(contents: Vec<Content>, structured: Value) -> CallToolResult {
+    CallToolResult {
+        content: contents,
+        structured_content: Some(structured),
+        is_error: Some(false),
+        meta: None,
+    }
 }
 
-#[derive(Deserialize)]
-struct ResourceReadArgs {
-    uri: String,
-}
-
-fn tool_definitions() -> Vec<Value> {
-    vec![
-        json!({
-            "name": "skills_list",
-            "title": "List repo skills",
-            "description": "Enumerate every SKILL.md under the repo's skills root with metadata and optional body text.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "Optional substring filter applied to install name, SKILL name, or description."
-                    },
-                    "includeBody": {
-                        "type": "boolean",
-                        "description": "Include the SKILL.md body (without YAML front-matter) in the structured response."
-                    }
-                },
-                "additionalProperties": false
-            }
-        }),
-        json!({
-            "name": "skills_show",
-            "title": "Show a skill",
-            "description": "Return the metadata and full body of a single skill by its SKILL.md front-matter name.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "skillName": {
-                        "type": "string",
-                        "description": "Front-matter name to open (e.g., landing-the-plane).",
-                        "minLength": 1
-                    }
-                },
-                "required": ["skillName"],
-                "additionalProperties": false
-            }
-        }),
-        json!({
-            "name": "skills_search",
-            "title": "Search repo skills",
-            "description": "Search SKILL metadata and body text for keywords to quickly find relevant instructions.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "Keywords to match (all tokens must appear).",
-                        "minLength": 1
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Maximum number of hits to return.",
-                        "minimum": 1,
-                        "maximum": MAX_SEARCH_LIMIT,
-                        "default": DEFAULT_SEARCH_LIMIT
-                    }
-                },
-                "required": ["query"],
-                "additionalProperties": false
-            }
-        }),
-    ]
+fn to_internal_error(err: anyhow::Error) -> McpError {
+    McpError::internal_error(err.to_string(), None)
 }
