@@ -91,11 +91,11 @@ fn install_from_file_url_writes_lock_and_files() {
     assert_eq!(repo["host"].as_str().unwrap(), "local");
     assert_eq!(repo["owner"].as_str().unwrap(), "remotes");
 
-    // sk check should report ok
+    // sk doctor --summary should report ok
     let mut chk = cargo_bin_cmd!("sk");
     let out = chk
         .current_dir(&project)
-        .args(["check", "--json"])
+        .args(["doctor", "--summary", "--json"])
         .output()
         .unwrap();
     assert!(out.status.success());

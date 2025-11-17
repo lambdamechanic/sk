@@ -7,7 +7,7 @@ mod support;
 use support::CliFixture;
 
 fn status_json(fix: &CliFixture) -> Json {
-    fix.run_json(["status", "--json"].as_ref())
+    fix.run_json(["doctor", "--status", "--json"].as_ref())
 }
 
 #[test]

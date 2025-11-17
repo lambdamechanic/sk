@@ -23,13 +23,14 @@ sk init [--root <dir>]
 sk install <repo> <skill-name> [--alias <name>] [--path <subdir>] [--root <dir>] [--https]
 sk list [--root <dir>] [--json]
 sk where <installed-name> [--root <dir>]
-sk check [<installed-name> ...] [--root <dir>] [--json]
-sk status [<installed-name> ...] [--root <dir>] [--json]
+sk doctor [<installed-name> ...] [--root <dir>] [--summary|--status|--diff] [--json] [--apply]
 sk update                      # cache-only: fetch all known repos; no project writes
 sk upgrade <installed-name|--all> [--root <dir>] [--dry-run]
 sk remove <installed-name> [--root <dir>] [--force]
 sk sync-back <installed-name> [--branch <name>] [--message "<msg>"] [--root <dir>]
 sk config get|set <key> [value]  # per-user config (~/.config/sk/config.json)
+
+Note: earlier drafts referenced `sk check`, `sk status`, and `sk diff`. Those flows now live under `sk doctor --summary/--status/--diff`; the rest of this document keeps the older phrasing where historically relevant.
 ```
 
 **Repo shorthand**

@@ -21,10 +21,9 @@ use clap::Parser;
 use owo_colors::OwoColorize;
 
 use crate::cli::{Cli, Commands, ConfigCmd, RepoCmd, TemplateCmd};
+use crate::doctor::{DoctorArgs, DoctorMode};
 use serde::Serialize;
-use std::collections::{HashMap, HashSet};
 use std::io::IsTerminal;
-use std::thread;
 use unicode_width::UnicodeWidthStr;
 
 fn main() -> Result<()> {
@@ -36,9 +35,18 @@ fn main() -> Result<()> {
             installed_name,
             root,
         } => cmd_where(&installed_name, root.as_deref()),
-        Commands::Check { names, root, json } => cmd_check(&names, root.as_deref(), json),
-        Commands::Status { names, root, json } => cmd_status(&names, root.as_deref(), json),
-        Commands::Diff { names, root } => cmd_diff(&names, root.as_deref()),
+        Commands::Check { names, root, json } => {
+            warn_deprecated("check", "sk doctor --summary");
+            cmd_doctor(&names, root.as_deref(), true, false, false, json, false)
+        }
+        Commands::Status { names, root, json } => {
+            warn_deprecated("status", "sk doctor --status");
+            cmd_doctor(&names, root.as_deref(), false, true, false, json, false)
+        }
+        Commands::Diff { names, root } => {
+            warn_deprecated("diff", "sk doctor --diff");
+            cmd_doctor(&names, root.as_deref(), false, false, true, false, false)
+        }
         Commands::Update => update::run_update(),
         Commands::Upgrade {
             target,
@@ -75,7 +83,15 @@ fn main() -> Result<()> {
             skill_path: skill_path.as_deref(),
             https,
         }),
-        Commands::Doctor { apply } => doctor::run_doctor(apply),
+        Commands::Doctor {
+            names,
+            root,
+            summary,
+            status,
+            diff,
+            json,
+            apply,
+        } => cmd_doctor(&names, root.as_deref(), summary, status, diff, json, apply),
         Commands::Config { cmd } => cmd_config(cmd),
         Commands::Template { cmd } => cmd_template(cmd),
         Commands::Repo { cmd } => cmd_repo(cmd),
@@ -151,6 +167,53 @@ fn cmd_repo(cmd: RepoCmd) -> Result<()> {
             json,
         }),
     }
+}
+
+fn warn_deprecated(cmd: &str, replacement: &str) {
+    eprintln!(
+        "warning: `sk {cmd}` is deprecated; use `{replacement}` instead.",
+        replacement = replacement
+    );
+}
+
+fn cmd_doctor(
+    names: &[String],
+    root_flag: Option<&str>,
+    summary: bool,
+    status: bool,
+    diff: bool,
+    json: bool,
+    apply: bool,
+) -> Result<()> {
+    let mode_flags = summary as u8 + status as u8 + diff as u8;
+    if mode_flags > 1 {
+        bail!("Choose only one of --summary, --status, or --diff.");
+    }
+
+    let mode = if summary {
+        DoctorMode::Summary
+    } else if status {
+        DoctorMode::Status
+    } else if diff {
+        DoctorMode::Diff
+    } else {
+        DoctorMode::Diagnose
+    };
+
+    if json && !matches!(mode, DoctorMode::Summary | DoctorMode::Status) {
+        bail!("--json is only supported with --summary or --status.");
+    }
+    if apply && !matches!(mode, DoctorMode::Diagnose) {
+        bail!("--apply cannot be combined with --summary/--status/--diff.");
+    }
+
+    doctor::run_doctor(DoctorArgs {
+        names,
+        root: root_flag,
+        mode,
+        json,
+        apply,
+    })
 }
 
 fn cmd_init(root_flag: Option<&str>) -> Result<()> {
@@ -308,30 +371,6 @@ fn load_skill_meta(
     crate::skills::parse_frontmatter_file(&skill_md).ok()
 }
 
-#[derive(Serialize)]
-struct CheckEntry {
-    install_name: String,
-    state: String, // ok|modified|missing
-}
-
-fn cmd_check(names: &[String], root_flag: Option<&str>, json: bool) -> Result<()> {
-    let ctx = load_project_context(root_flag)?;
-    let targets = select_skills(&ctx.lockfile.skills, names);
-    let entries: Vec<CheckEntry> = targets
-        .into_iter()
-        .map(|skill| build_check_entry(&ctx.install_root, skill))
-        .collect();
-
-    if json {
-        println!("{}", serde_json::to_string_pretty(&entries)?);
-    } else {
-        for entry in entries {
-            println!("{}\t{}", entry.install_name, entry.state);
-        }
-    }
-    Ok(())
-}
-
 fn cmd_where(name: &str, root_flag: Option<&str>) -> Result<()> {
     let project_root = git::ensure_git_repo()?;
     let cfg = config::load_or_default()?;
@@ -343,329 +382,5 @@ fn cmd_where(name: &str, root_flag: Option<&str>) -> Result<()> {
         Ok(())
     } else {
         anyhow::bail!("not found: {name}")
-    }
-}
-
-#[derive(Serialize)]
-struct StatusEntry {
-    install_name: String,
-    state: String, // clean|modified|missing
-    locked: Option<String>,
-    current: Option<String>,
-    update: Option<String>, // old->new if out of date
-}
-
-fn cmd_status(names: &[String], root_flag: Option<&str>, json: bool) -> Result<()> {
-    let ctx = load_project_context(root_flag)?;
-    let targets = select_skills(&ctx.lockfile.skills, names);
-    let entries: Vec<StatusEntry> = targets
-        .into_iter()
-        .map(|skill| build_status_entry(&ctx.install_root, skill))
-        .collect();
-
-    if json {
-        println!("{}", serde_json::to_string_pretty(&entries)?);
-    } else {
-        for entry in entries {
-            println!(
-                "{}\t{}\t{}",
-                entry.install_name,
-                entry.state,
-                entry.update.unwrap_or_default()
-            );
-        }
-    }
-    Ok(())
-}
-
-fn cmd_diff(names: &[String], root_flag: Option<&str>) -> Result<()> {
-    let ctx = load_project_context(root_flag)?;
-    let targets = select_skills(&ctx.lockfile.skills, names);
-    if names.is_empty() {
-        if targets.is_empty() {
-            return Ok(());
-        }
-    } else if targets.len() != names.len() {
-        let resolved: HashSet<&str> = targets.iter().map(|s| s.install_name.as_str()).collect();
-        let missing: Vec<&String> = names
-            .iter()
-            .filter(|name| !resolved.contains(name.as_str()))
-            .collect();
-        if !missing.is_empty() {
-            bail!(
-                "No installed skills matched: {}",
-                missing
-                    .into_iter()
-                    .map(|s| s.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            );
-        }
-    }
-    let repo_tips = resolve_remote_tips_for_targets(&targets);
-    let stdout_is_tty = std::io::stdout().is_terminal();
-    let mut printed_any = false;
-    for skill in targets {
-        let key = build_repo_key(skill);
-        let remote = match repo_tips.get(&key).cloned() {
-            Some(Ok(tip)) => tip,
-            Some(Err(err)) => {
-                eprintln!("{}: {}", skill.install_name, err);
-                continue;
-            }
-            None => {
-                eprintln!("{}: missing repo metadata", skill.install_name);
-                continue;
-            }
-        };
-        match diff_skill(&ctx.install_root, skill, &remote) {
-            Ok(DiffOutcome::Diff(diff_text)) => {
-                let display_name = if stdout_is_tty {
-                    skill.install_name.as_str().bold().bright_cyan().to_string()
-                } else {
-                    skill.install_name.clone()
-                };
-                if printed_any {
-                    println!();
-                }
-                println!("==> {}", display_name);
-                println!(
-                    "remote: {} @ {} (origin/{})",
-                    format_repo_id(skill),
-                    &remote.commit[..7],
-                    remote.branch
-                );
-                print!("{diff_text}");
-                printed_any = true;
-            }
-            Ok(DiffOutcome::NoDiff) => {}
-            Err(err) => eprintln!("{}: {:#}", skill.install_name, err),
-        }
-    }
-    if !printed_any {
-        // Intentionally silent when nothing differs.
-    }
-    Ok(())
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-struct RepoKey {
-    url: String,
-    host: String,
-    owner: String,
-    repo: String,
-}
-
-fn build_repo_key(skill: &lock::LockSkill) -> RepoKey {
-    let spec = skill.source.repo_spec();
-    RepoKey {
-        url: spec.url.clone(),
-        host: spec.host.clone(),
-        owner: spec.owner.clone(),
-        repo: spec.repo.clone(),
-    }
-}
-
-fn resolve_remote_tips_for_targets(
-    skills: &[&lock::LockSkill],
-) -> HashMap<RepoKey, Result<RemoteTip, String>> {
-    let mut uniq: HashSet<RepoKey> = HashSet::new();
-    for skill in skills {
-        uniq.insert(build_repo_key(skill));
-    }
-    let mut handles = Vec::new();
-    for key in uniq.into_iter() {
-        handles.push(thread::spawn(move || {
-            let result = resolve_remote_tip_for_key(&key).map_err(|err| format!("{err:#}"));
-            (key, result)
-        }));
-    }
-    let mut map = HashMap::new();
-    for handle in handles {
-        let (key, result) = handle.join().expect("repo refresh thread panicked");
-        map.insert(key, result);
-    }
-    map
-}
-
-fn resolve_remote_tip_for_key(key: &RepoKey) -> Result<RemoteTip> {
-    let cache_dir =
-        paths::resolve_or_primary_cache_path(&key.url, &key.host, &key.owner, &key.repo);
-    let spec = git::RepoSpec {
-        url: key.url.clone(),
-        host: key.host.clone(),
-        owner: key.owner.clone(),
-        repo: key.repo.clone(),
-    };
-    git::ensure_cached_repo(&cache_dir, &spec)
-        .with_context(|| format!("refreshing cache for {}/{}", spec.owner, spec.repo))?;
-    let branch = git::detect_or_set_default_branch(&cache_dir, &spec)?;
-    let tip = git::rev_parse(&cache_dir, &format!("refs/remotes/origin/{branch}"))?;
-    Ok(RemoteTip {
-        cache_dir,
-        branch,
-        commit: tip,
-    })
-}
-
-enum DiffOutcome {
-    Diff(String),
-    NoDiff,
-}
-
-#[derive(Clone)]
-struct RemoteTip {
-    cache_dir: std::path::PathBuf,
-    branch: String,
-    commit: String,
-}
-
-fn diff_skill(
-    install_root: &std::path::Path,
-    skill: &lock::LockSkill,
-    remote: &RemoteTip,
-) -> Result<DiffOutcome> {
-    let local_dir = install_root.join(&skill.install_name);
-    if !local_dir.exists() {
-        bail!("local install missing at {}", local_dir.display());
-    }
-    let checkout = tempfile::tempdir().context("create temporary directory for remote contents")?;
-    install::extract_subdir_from_commit(
-        &remote.cache_dir,
-        &remote.commit,
-        skill.source.skill_path(),
-        checkout.path(),
-    )
-    .with_context(|| {
-        format!(
-            "extracting '{}' from {}",
-            skill.source.skill_path(),
-            &remote.commit[..7]
-        )
-    })?;
-    let output = std::process::Command::new("git")
-        .arg("--no-pager")
-        .arg("-c")
-        .arg("core.autocrlf=false")
-        .arg("diff")
-        .arg("--no-index")
-        .arg("--src-prefix=local/")
-        .arg("--dst-prefix=remote/")
-        .arg("--")
-        .arg(&local_dir)
-        .arg(checkout.path())
-        .output()
-        .context("git diff --no-index failed to run")?;
-    match output.status.code() {
-        Some(0) => Ok(DiffOutcome::NoDiff),
-        Some(1) => {
-            let text = String::from_utf8_lossy(&output.stdout).into_owned();
-            if text.trim().is_empty() {
-                Ok(DiffOutcome::NoDiff)
-            } else {
-                Ok(DiffOutcome::Diff(text))
-            }
-        }
-        Some(code) => {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            bail!("git diff exited with status {code}: {stderr}");
-        }
-        None => bail!("git diff terminated by signal"),
-    }
-}
-
-struct ProjectContext {
-    install_root: std::path::PathBuf,
-    lockfile: lock::Lockfile,
-}
-
-fn load_project_context(root_flag: Option<&str>) -> Result<ProjectContext> {
-    let project_root = git::ensure_git_repo()?;
-    let cfg = config::load_or_default()?;
-    let install_root_rel = root_flag.unwrap_or(&cfg.default_root);
-    let install_root = paths::resolve_project_path(&project_root, install_root_rel);
-    let lock_path = project_root.join("skills.lock.json");
-    if !lock_path.exists() {
-        bail!("no lockfile");
-    }
-    let lockfile = lock::Lockfile::load(&lock_path)?;
-    Ok(ProjectContext {
-        install_root,
-        lockfile,
-    })
-}
-
-fn select_skills<'a>(skills: &'a [lock::LockSkill], names: &[String]) -> Vec<&'a lock::LockSkill> {
-    if names.is_empty() {
-        return skills.iter().collect();
-    }
-    let wanted: HashSet<&String> = names.iter().collect();
-    skills
-        .iter()
-        .filter(|skill| wanted.contains(&skill.install_name))
-        .collect()
-}
-
-fn build_check_entry(install_root: &std::path::Path, skill: &lock::LockSkill) -> CheckEntry {
-    let dest = install_root.join(&skill.install_name);
-    let state = if !dest.exists() {
-        "missing".to_string()
-    } else {
-        let skill_md = dest.join("SKILL.md");
-        let manifest_ok =
-            skill_md.exists() && crate::skills::parse_frontmatter_file(&skill_md).is_ok();
-        let digest_ok = crate::digest::digest_dir(&dest)
-            .map(|h| h == skill.digest)
-            .unwrap_or(false);
-        if manifest_ok && digest_ok {
-            "ok".to_string()
-        } else {
-            "modified".to_string()
-        }
-    };
-    CheckEntry {
-        install_name: skill.install_name.clone(),
-        state,
-    }
-}
-
-fn build_status_entry(install_root: &std::path::Path, skill: &lock::LockSkill) -> StatusEntry {
-    let dest = install_root.join(&skill.install_name);
-    let (state, current_digest) = compute_install_state(&dest, &skill.digest);
-    let update = compute_remote_update(skill);
-    StatusEntry {
-        install_name: skill.install_name.clone(),
-        state,
-        locked: Some(skill.digest.clone()),
-        current: current_digest,
-        update,
-    }
-}
-
-fn compute_install_state(dir: &std::path::Path, expected_digest: &str) -> (String, Option<String>) {
-    if !dir.exists() {
-        return ("missing".to_string(), None);
-    }
-    match crate::digest::digest_dir(dir).ok() {
-        Some(hash) if hash == expected_digest => ("clean".to_string(), Some(hash)),
-        Some(hash) => ("modified".to_string(), Some(hash)),
-        None => ("modified".to_string(), None),
-    }
-}
-
-fn compute_remote_update(skill: &lock::LockSkill) -> Option<String> {
-    let spec = skill.source.repo_spec();
-    let cache_dir =
-        paths::resolve_or_primary_cache_path(&spec.url, &spec.host, &spec.owner, &spec.repo);
-    if !cache_dir.exists() {
-        return None;
-    }
-    let owned = skill.source.repo_spec_owned();
-    let branch = git::detect_or_set_default_branch(&cache_dir, &owned).ok()?;
-    let tip = git::rev_parse(&cache_dir, &format!("refs/remotes/origin/{branch}")).ok()?;
-    if tip == skill.commit {
-        None
-    } else {
-        Some(format!("{} -> {}", &skill.commit[..7], &tip[..7]))
     }
 }

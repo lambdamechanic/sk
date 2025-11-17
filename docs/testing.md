@@ -31,7 +31,7 @@ End-to-end CLI tests share a reusable harness under `tests/support/mod.rs`:
 
 - `CliFixture` bootstraps a temp git project, a cache override (`SK_CACHE_DIR`), and a throwaway config directory via the new `SK_CONFIG_DIR` override.
 - `RemoteRepo` wraps local bare remotes plus worktrees so tests can push upgrades (`overwrite_file`) without reimplementing git plumbing.
-- Helper utilities expose common assertions such as `parse_status_entries` for `sk status --json`.
+- Helper utilities expose common assertions such as `parse_status_entries` for `sk doctor --status --json`.
 
 Example:
 
@@ -48,7 +48,7 @@ fn lifecycle_flow() {
     let remote = fx.create_remote("repo", "skills/demo", "demo");
     fx.install_from_remote(&remote, "demo");
 
-    let status = parse_status_entries(fx.run_json(&["status", "--json"]));
+    let status = parse_status_entries(fx.run_json(&["doctor", "--status", "--json"]));
     assert_eq!(status[0].state, "clean");
 }
 ```

@@ -69,13 +69,13 @@ sk sync-back new-helper -m "Explain the change"
 ## 7. Keeping caches healthy
 ```bash
 sk update                      # refresh cached repos (safe on CI)
-sk status --json               # detect dirty installs or pending upgrades
-sk check --json                # structural integrity, digests, cache drift
+sk doctor --status --json      # detect dirty installs or pending upgrades
+sk doctor --summary --json     # structural integrity, digests, cache drift
 sk doctor --apply              # rebuild installs/caches when corruption is detected
 ```
 
 - Prefer `sk upgrade --all` only when `skills/` is clean (no local edits). Otherwise, upgrade specific installs after syncing them back upstream.
-- When `sk status` reports `modified`, either `sk sync-back <skill>` or `sk remove <skill>` (if the user asked you to discard the work).
+- When `sk doctor --status` reports `modified`, either `sk sync-back <skill>` or `sk remove <skill>` (if the user asked you to discard the work).
 
 ## 8. Recovery playbook
 - **Interrupted upgrade/install** — re-run the command; the lockfile ensures the CLI is idempotent.
@@ -85,7 +85,7 @@ sk doctor --apply              # rebuild installs/caches when corruption is dete
 
 ## 9. Session shutdown checklist
 - `cargo test` (or the requested subset) passes locally.
-- `sk status --json` reports all installs clean.
+- `sk doctor --status --json` reports all installs clean.
 - `git status -sb` is clean; no staged-but-uncommitted files.
 - The relevant bd issue is updated/closed, and `.beads/issues.jsonl` is committed.
 - Mention the latest `skills.lock.json` diff and any remaining TODOs in your final response.

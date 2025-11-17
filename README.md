@@ -70,8 +70,8 @@ Implementation notes, machine-readable catalog output, cache layouts, building f
 ### 8. Keep caches fresh and roll forward clean installs
 ```bash
 sk update                    # fetch every repo referenced in the lockfile (cache-only)
-sk diff                      # compare local installs against the cached remote tip
-sk diff frontend-design      # limit the diff to just the named installs
+sk doctor --diff             # compare local installs against the cached remote tip
+sk doctor --diff frontend-design  # limit the diff to just the named installs
 sk upgrade --dry-run         # show old -> new commits without touching the repo
 sk upgrade --all             # apply upgrades for every clean (unmodified) skill
 sk remove <name>             # refuses if modified unless you pass --force
@@ -170,8 +170,7 @@ That paragraph solves the “chicken-and-egg” problem: the agent reads the pol
 | `sk init [--root ./skills]` | Bootstrap a repo-local skills directory and lockfile. |
 | `sk install <repo> <skill-name> [--path subdir] [--alias name]` | Copy a skill from a git repo into `skills/<alias>` and lock its commit/digest. |
 | `sk list` / `sk where <name>` | Inspect installed skill set or find the on-disk path. |
-| `sk check [name...] [--json]` | Quick OK/modified/missing status for installs. |
-| `sk status [name...] [--json]` | Compare digests plus show upstream tip (`old -> new`). |
+| `sk doctor [name...] [--summary|--status|--diff] [--json] [--apply]` | Unified health command: `--summary` is the old `sk check`, `--status` shows digests and upgrades, `--diff` compares with the remote tip, and without flags it performs the full repair run (optionally `--apply`). |
 | `sk repo add <repo> [--alias foo]` | Cache a remote repo (and record it in `skills.lock.json`’s repo registry) without installing a skill yet. |
 | `sk repo list [--json]` | Show cached repos + their aliases. |
 | `sk repo remove <alias-or-repo> [--json]` | Drop a cached repo entry (alias or repo spec) when you no longer need it. |
@@ -181,7 +180,6 @@ That paragraph solves the “chicken-and-egg” problem: the agent reads the pol
 | `sk upgrade [--all or <name>] [--dry-run]` | Copy newer commits into the repo and update the lockfile. |
 | `sk template create <name> "<description>"` | Scaffold a new skill from the configured template into `skills/<name>`. |
 | `sk sync-back <name> [-m "..."]` | Push local edits (or brand-new skills) to the configured repo and auto-open a PR with `gh`. |
-| `sk doctor [name...] [--apply]` | Diagnose duplicates, missing caches, digest drift; with `--apply` rebuild installs, prune caches, drop orphaned lock entries. |
 | `sk precommit [--allow-local]` | Enforce no local-only sources in `skills.lock.json` before committing. |
 | `sk config get|set <key> [value]` | View or tweak defaults like install root, protocol, host, GitHub username. |
 

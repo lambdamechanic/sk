@@ -42,7 +42,13 @@ fn quickstart_readme_flow() {
     run(&["install", "@anthropics/skills", "frontend-design"]);
     run(&["install", "@anthropics/skills", "artifacts-builder"]);
     run(&["list"]);
-    run(&["status", "template", "frontend-design", "artifacts-builder"]);
+    run(&[
+        "doctor",
+        "--status",
+        "template",
+        "frontend-design",
+        "artifacts-builder",
+    ]);
 
     // Detect local edits with doctor.
     let frontend_notes = fx.skill_dir("frontend-design").join("LOCAL_NOTES.md");

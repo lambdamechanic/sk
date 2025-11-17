@@ -16,10 +16,10 @@ fn diff_reports_clean_install() {
     let remote = fix.create_remote("diff-clean", "skill", "demo");
     fix.install_from_remote(&remote, "demo");
 
-    let output = fix.sk_cmd().args(["diff"]).output().unwrap();
+    let output = fix.sk_cmd().args(["doctor", "--diff"]).output().unwrap();
     assert!(
         output.status.success(),
-        "sk diff failed: {:?}",
+        "sk doctor --diff failed: {:?}",
         output.stderr
     );
     let stdout = stdout_string(&output);
@@ -39,10 +39,14 @@ fn diff_shows_remote_updates_after_cache_refresh() {
     remote.overwrite_file("file.txt", "v2\n", "v2");
     fix.sk_success(&["update"]);
 
-    let output = fix.sk_cmd().args(["diff", "demo"]).output().unwrap();
+    let output = fix
+        .sk_cmd()
+        .args(["doctor", "--diff", "demo"])
+        .output()
+        .unwrap();
     assert!(
         output.status.success(),
-        "sk diff failed: {:?}",
+        "sk doctor --diff failed: {:?}",
         output.stderr
     );
     let stdout = stdout_string(&output);
@@ -69,10 +73,14 @@ fn diff_recovers_missing_cache() {
         fs::remove_dir_all(&cache_dir).unwrap();
     }
 
-    let output = fix.sk_cmd().args(["diff", "demo"]).output().unwrap();
+    let output = fix
+        .sk_cmd()
+        .args(["doctor", "--diff", "demo"])
+        .output()
+        .unwrap();
     assert!(
         output.status.success(),
-        "sk diff failed: {:?}",
+        "sk doctor --diff failed: {:?}",
         output.stderr
     );
     let stdout = stdout_string(&output);

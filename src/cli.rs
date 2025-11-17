@@ -36,6 +36,7 @@ pub enum Commands {
         #[arg(long)]
         root: Option<String>,
     },
+    #[command(hide = true, about = "DEPRECATED: use `sk doctor --summary` instead")]
     Check {
         names: Vec<String>,
         #[arg(long)]
@@ -43,6 +44,7 @@ pub enum Commands {
         #[arg(long)]
         json: bool,
     },
+    #[command(hide = true, about = "DEPRECATED: use `sk doctor --status` instead")]
     Status {
         names: Vec<String>,
         #[arg(long)]
@@ -106,8 +108,32 @@ pub enum Commands {
    prune unreferenced cache clones under the cache root (~/.cache/sk/repos)."
     )]
     Doctor {
+        names: Vec<String>,
+        #[arg(long)]
+        root: Option<String>,
         #[arg(
             long,
+            conflicts_with_all = ["status", "diff"],
+            help = "Show the lightweight ok/modified/missing view (replacement for `sk check`)."
+        )]
+        summary: bool,
+        #[arg(
+            long,
+            conflicts_with_all = ["summary", "diff"],
+            help = "Show digest + upgrade info (replacement for `sk status`)."
+        )]
+        status: bool,
+        #[arg(
+            long,
+            conflicts_with_all = ["summary", "status"],
+            help = "Show diffs against the cached remote tip (replacement for `sk diff`)."
+        )]
+        diff: bool,
+        #[arg(long, help = "Emit JSON (summary/status modes only).")]
+        json: bool,
+        #[arg(
+            long,
+            conflicts_with_all = ["summary", "status", "diff"],
             help = "Apply repairs: rebuild missing installs, drop orphan lock entries, prune unreferenced caches, normalize lockfile"
         )]
         apply: bool,

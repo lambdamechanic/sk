@@ -9,7 +9,7 @@ description: "How to use the repo-scoped sk CLI to manage Claude Skills in this 
 
 ## When to reach for this skill
 - You need to install or upgrade a skill from the canonical skills repo (`https://github.com/lambdamechanic/skills`).
-- You want to verify the working tree is clean (`sk status`, `sk check`).
+- You want to verify the working tree is clean (`sk doctor --status`, `sk doctor --summary`).
 - You are preparing to sync edits back to the upstream skills repository (`sk sync-back <install>`).
 
 ## Core workflow
@@ -24,8 +24,8 @@ description: "How to use the repo-scoped sk CLI to manage Claude Skills in this 
    ```
 3. **Audit local installs** before landing work:
    ```bash
-   target/debug/sk status --json   # detect dirty trees vs lockfile
-   target/debug/sk check --json    # shows pending upgrades or cache drift
+   target/debug/sk doctor --status --json   # detect dirty trees vs lockfile
+   target/debug/sk doctor --summary --json  # shows pending upgrades or cache drift
    ```
 4. **Sync edits upstream** after modifying a skill under `./skills/<name>`:
    ```bash
@@ -69,12 +69,12 @@ target/debug/sk sync-back sk \
 What happens:
 - `sk` prints both the temporary branch name and the upstream repo it pushed to, so you can follow up on GitHub immediately.
 - The branch only needs to live long enough for you (or automation) to open a PR; the lockfile entry pins the pushed commit hash, so it’s safe to delete the branch once merged.
-- `skills.lock.json` gains a new entry for `sk` with the push timestamp, digest, and commit ID; subsequent `sk status` runs stay green because the on-disk tree matches that digest.
+- `skills.lock.json` gains a new entry for `sk` with the push timestamp, digest, and commit ID; subsequent `sk doctor --status` runs stay green because the on-disk tree matches that digest.
 
 ## Guardrails
 - Always run `bd update` / `bd close` so `.beads/issues.jsonl` matches any skill changes.
 - Never edit `skills.lock.json` by hand. Let `sk install`, `sk upgrade`, or `sk remove` update it; commit the lockfile alongside the skill changes.
-- If `sk status` reports `dirty`, fix the local tree before running `sk upgrade` or `sk sync-back` to avoid partial syncs.
+- If `sk doctor --status` reports `dirty`, fix the local tree before running `sk upgrade` or `sk sync-back` to avoid partial syncs.
 - `sk upgrade --all` skips skills with local edits and prints reminders to `sk sync-back <name>`; treat that as a temporary state and clean them up promptly so future upgrades stay automatic.
 - When creating a new skill, always specify the upstream repo/path so `sk` can register it and refresh the lockfile automatically.
 - Use `sk precommit` (once implemented) to block local-only sources such as `file://` entries.

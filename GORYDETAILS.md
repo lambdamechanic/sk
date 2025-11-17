@@ -61,9 +61,7 @@ make qlty-smells               # blocking; use make qlty-smells-advisory for war
 | `sk init [--root ./skills]` | Bootstrap a repo-local skills directory and lockfile. |
 | `sk install <repo> <skill-name> [--path subdir] [--alias name]` | Copy a skill from a git repo into `skills/<alias>` and lock its commit/digest. |
 | `sk list` / `sk where <name>` | Inspect installed skill set or find the on-disk path. |
-| `sk check [name...] [--json]` | Quick OK/modified/missing status for installs. |
-| `sk status [name...] [--json]` | Compare digests plus show upstream tip (`old -> new`). |
-| `sk diff [name...]` | Show textual diffs between local installs and the cached remote default-branch tip. |
+| `sk doctor [name...] [--summary|--status|--diff] [--json] [--apply]` | Unified install health checks: `--summary` replaces `sk check`, `--status` shows digests plus remote tips, `--diff` compares against the cached default-branch tip, and without flags it runs the deep repair flow (optionally `--apply`). |
 | `sk repo add <repo> [--alias foo]` | Cache a remote repo (and record it in `skills.lock.json`’s repo registry) without installing a skill yet. |
 | `sk repo list [--json]` | Show cached repos plus total skills vs. installed counts; unreachable repos reuse cached counts and show a `*` next to the SKILLS column (`--json` prints the raw registry). |
 | `sk repo remove <alias-or-repo> [--json]` | Remove a cached repo entry by alias or repo spec when it’s no longer needed. |
@@ -73,6 +71,5 @@ make qlty-smells               # blocking; use make qlty-smells-advisory for war
 | `sk upgrade [--all or <name>] [--dry-run]` | Copy newer commits into the repo and update the lockfile. |
 | `sk template create <name> "<description>"` | Scaffold a new skill from the configured template into `skills/<name>`. |
 | `sk sync-back <name> [-m "..."]` | Push local edits (or brand-new skills) to the configured repo and open a PR with `gh`. |
-| `sk doctor [name...] [--apply]` | Diagnose duplicates, missing caches, digest drift; with `--apply` rebuild installs and prune caches. |
 | `sk precommit [--allow-local]` | Ensure `skills.lock.json` contains only shareable sources before committing. |
 | `sk config get <key>` / `sk config set <key> [value]` | View or tweak defaults like install root, protocol, host, or GitHub username. |

@@ -31,7 +31,7 @@ fn doctor_rebuilds_missing_install_from_locked_commit() {
     );
 
     assert!(install_dir.exists(), "doctor rebuilds from lock/cache");
-    let status = parse_status_entries(fx.run_json(&["status", "--json"]));
+    let status = parse_status_entries(fx.run_json(&["doctor", "--status", "--json"]));
     assert_eq!(status[0].state, "clean", "rebuild yielded clean install");
 }
 

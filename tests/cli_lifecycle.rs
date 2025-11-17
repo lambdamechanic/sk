@@ -76,5 +76,5 @@ fn lifecycle_install_update_upgrade_and_remove_flow() {
 }
 
 fn current_status(fx: &CliFixture) -> Vec<StatusEntry> {
-    parse_status_entries(fx.run_json(&["status", "--json"]))
+    parse_status_entries(fx.run_json(&["doctor", "--status", "--json"]))
 }
