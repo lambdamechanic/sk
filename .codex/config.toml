@@ -1,0 +1,9 @@
+[mcp_servers.sk]
+command = "sk"
+args = ["mcp-server"]
+
+[mcp_servers.beads]
+command = "beads-mcp"
+
+[mcp_servers.dumbwaiter]
+command = "./scripts/run-dumbwaiter-mcp.sh"

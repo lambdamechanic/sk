@@ -12,3 +12,8 @@ Cargo.lock
 
 # History notes (optional)
 # history/
+
+# MCP / tracker state
+state/
+.beads/beads.base.jsonl
+.beads/beads.base.meta.json

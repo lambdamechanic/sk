@@ -22,3 +22,7 @@ bd.db
 # Ignore derived "left" exports (per-user dashboards)
 beads.left.jsonl
 beads.left.meta.json
+
+# Ignore derived "base" exports (auto snapshots)
+beads.base.jsonl
+beads.base.meta.json
