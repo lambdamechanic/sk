@@ -279,10 +279,6 @@ impl Lockfile {
         let mut lf: Lockfile =
             serde_json::from_slice(&data).with_context(|| format!("parsing {}", path.display()))?;
         lf.assert_no_legacy_refs()?;
-        if let Some(parent) = path.parent() {
-            let legacy_path = parent.join("skills.repos.json");
-            lf.import_legacy_registry(path, &legacy_path)?;
-        }
         lf.repos.backfill_from_skills(&lf.skills);
         lf.hydrate_sources()?;
         Ok(lf)
@@ -292,12 +288,7 @@ impl Lockfile {
         if path.exists() {
             Self::load(path)
         } else {
-            let mut lf = Self::empty_now();
-            if let Some(parent) = path.parent() {
-                let legacy_path = parent.join("skills.repos.json");
-                lf.import_legacy_registry(path, &legacy_path)?;
-            }
-            Ok(lf)
+            Ok(Self::empty_now())
         }
     }
 
@@ -330,26 +321,6 @@ impl Lockfile {
         self.repos.insert_if_missing(spec, None, None)
     }
 
-    fn import_legacy_registry(&mut self, lock_path: &Path, legacy_path: &Path) -> Result<()> {
-        if !legacy_path.exists() {
-            return Ok(());
-        }
-        let data =
-            fs::read(legacy_path).with_context(|| format!("reading {}", legacy_path.display()))?;
-        let legacy: LegacyRepoRegistry = serde_json::from_slice(&data)
-            .with_context(|| format!("parsing {}", legacy_path.display()))?;
-        let mut imported = false;
-        for entry in legacy.repos {
-            self.repos
-                .insert_if_missing(&entry.spec, Some(entry.alias), Some(entry.added_at));
-            imported = true;
-        }
-        if imported {
-            save_lockfile(lock_path, self)?;
-            let _ = fs::remove_file(legacy_path);
-        }
-        Ok(())
-    }
 }
 
 pub fn save_lockfile(path: &Path, lf: &Lockfile) -> Result<()> {
@@ -405,15 +376,7 @@ fn default_alias(spec: &crate::git::RepoSpec) -> String {
     }
 }
 
-#[derive(Deserialize)]
-struct LegacyRepoRegistry {
-    repos: Vec<LegacyRepoEntry>,
-}
-
-#[derive(Deserialize)]
-struct LegacyRepoEntry {
-    alias: String,
-    spec: crate::git::RepoSpec,
-    #[serde(rename = "added_at")]
-    added_at: String,
-}
+// NOTE: We previously supported migrating skills.repos.json into the lockfile, but no
+// community installs ever relied on that path. The legacy parsing code was removed on
+// purpose (Nov 2025) to keep the lock loader simple and deterministic. If we ever ship a
+// release with a standalone repo registry again, add a regression-tested migration here.
