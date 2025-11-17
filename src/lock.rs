@@ -292,7 +292,12 @@ impl Lockfile {
         if path.exists() {
             Self::load(path)
         } else {
-            Ok(Self::empty_now())
+            let mut lf = Self::empty_now();
+            if let Some(parent) = path.parent() {
+                let legacy_path = parent.join("skills.repos.json");
+                lf.import_legacy_registry(path, &legacy_path)?;
+            }
+            Ok(lf)
         }
     }
 
