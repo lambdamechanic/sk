@@ -17,7 +17,7 @@ This document expands the abbreviated rules in `AGENTS.md`. Read this whenever y
 ## Quick Start Commands
 
 ```bash
-bd ready --json                         # find unblocked work
+bd ready --json -n 0                    # find unblocked work
 bd create "Issue title" -t task -p 2 --json
 bd update bd-42 --status in_progress --json
 bd close bd-42 --reason "Completed" --json
@@ -32,7 +32,7 @@ Always run bd with `--json`. Pipe/parse as needed.
 
 ## Workflow for AI Agents
 
-1. **Check ready work** with `bd ready --json`. Do this before asking what to work on.
+1. **Check ready work** with `bd ready --json -n 0`. Do this before asking what to work on.
 2. **Claim** the task: `bd update <id> --status in_progress --json` (add notes if relevant).
 3. **Implement / test / document** the change.
 4. **Discover new work?** Create a linked issue (e.g., `bd create "Fix follow-up" -p 1 --deps discovered-from:<parent> --json`).

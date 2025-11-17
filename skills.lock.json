@@ -21,9 +21,9 @@
         "repoKey": "github.com/lambdamechanic/skills",
         "skillPath": "bd"
       },
-      "commit": "bb2c05e3582890b34bb896b9d74220bdffe0d8fa",
-      "digest": "sha256:18fe02eb49142040890a5805da56382d9ec1db2ba61a9b72d4457de16dcf8665",
-      "installedAt": "2025-11-17T00:45:35.676991308+00:00"
+      "commit": "bc6c02e4bb52099727fbc2cd270c8f7c5799517e",
+      "digest": "sha256:f9c3d0bb446ab67615db4ee22585ba201a2f26dd733fe2ce9d3dba63c35e41b7",
+      "installedAt": "2025-11-17T05:21:05.779695523+00:00"
     },
     {
       "installName": "dumbwaiter-mcp",
@@ -71,9 +71,9 @@
         "repoKey": "github.com/lambdamechanic/skills",
         "skillPath": "sk"
       },
-      "commit": "bb2c05e3582890b34bb896b9d74220bdffe0d8fa",
-      "digest": "sha256:3bf50a0700e51fda9bd879469816e4c9e09f08cb9ca4664c92260b3b8bcd091d",
-      "installedAt": "2025-11-16T14:17:52.369741999+00:00"
+      "commit": "0e1074bbbf4fcf35ffec41d721fed3e7b21bdabc",
+      "digest": "sha256:3d84c567243be6a73d06e809ca43ec3b4636f4dd1ea6c153d04b0e116d0242a1",
+      "installedAt": "2025-11-17T05:22:25.953444969+00:00"
     },
     {
       "installName": "landing-the-plane",
@@ -96,5 +96,5 @@
       "installedAt": "2025-11-17T00:45:35.676991308+00:00"
     }
   ],
-  "generatedAt": "2025-11-17T00:45:35.676991308+00:00"
+  "generatedAt": "2025-11-17T05:22:25.953447036+00:00"
 }
