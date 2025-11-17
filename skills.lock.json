@@ -21,9 +21,9 @@
         "repoKey": "github.com/lambdamechanic/skills",
         "skillPath": "bd"
       },
-      "commit": "bc6c02e4bb52099727fbc2cd270c8f7c5799517e",
+      "commit": "f38cc63f7b158188bf545ff9c19797509e0bc8a0",
       "digest": "sha256:f9c3d0bb446ab67615db4ee22585ba201a2f26dd733fe2ce9d3dba63c35e41b7",
-      "installedAt": "2025-11-17T05:21:05.779695523+00:00"
+      "installedAt": "2025-11-17T07:25:06.578213549+00:00"
     },
     {
       "installName": "dumbwaiter-mcp",
@@ -31,9 +31,9 @@
         "repoKey": "github.com/lambdamechanic/skills",
         "skillPath": "dumbwaiter-mcp"
       },
-      "commit": "bb2c05e3582890b34bb896b9d74220bdffe0d8fa",
+      "commit": "f38cc63f7b158188bf545ff9c19797509e0bc8a0",
       "digest": "sha256:7be1f1e8413d8355e888deef8f397f1392ab50e700f9415a0313af6b47c8603d",
-      "installedAt": "2025-11-17T00:45:35.676991308+00:00"
+      "installedAt": "2025-11-17T07:25:06.578213549+00:00"
     },
     {
       "installName": "rust-guidelines",
@@ -41,19 +41,9 @@
         "repoKey": "github.com/lambdamechanic/skills",
         "skillPath": "rust-guidelines"
       },
-      "commit": "bb2c05e3582890b34bb896b9d74220bdffe0d8fa",
+      "commit": "f38cc63f7b158188bf545ff9c19797509e0bc8a0",
       "digest": "sha256:63c89e30e6f8e508c2c1d864b257b35551860324f406286db928b354f948462a",
-      "installedAt": "2025-11-17T00:45:35.676991308+00:00"
-    },
-    {
-      "installName": "starting-the-task",
-      "source": {
-        "repoKey": "github.com/lambdamechanic/skills",
-        "skillPath": "starting-the-task"
-      },
-      "commit": "bb2c05e3582890b34bb896b9d74220bdffe0d8fa",
-      "digest": "sha256:5a577bfaddde0d038ef980dfc8fbbb6f314a985412f17672649b8c820c9ee5e3",
-      "installedAt": "2025-11-17T00:45:35.676991308+00:00"
+      "installedAt": "2025-11-17T07:25:06.578213549+00:00"
     },
     {
       "installName": "template-skill",
@@ -61,9 +51,9 @@
         "repoKey": "github.com/lambdamechanic/skills",
         "skillPath": "template-skill"
       },
-      "commit": "bb2c05e3582890b34bb896b9d74220bdffe0d8fa",
+      "commit": "f38cc63f7b158188bf545ff9c19797509e0bc8a0",
       "digest": "sha256:38c88f722b574a922311d334a70c2008a2a5b896f06eaa75516d716e5725b26f",
-      "installedAt": "2025-11-17T00:45:35.676991308+00:00"
+      "installedAt": "2025-11-17T07:25:06.578213549+00:00"
     },
     {
       "installName": "sk",
@@ -71,19 +61,9 @@
         "repoKey": "github.com/lambdamechanic/skills",
         "skillPath": "sk"
       },
-      "commit": "0e1074bbbf4fcf35ffec41d721fed3e7b21bdabc",
+      "commit": "f38cc63f7b158188bf545ff9c19797509e0bc8a0",
       "digest": "sha256:3d84c567243be6a73d06e809ca43ec3b4636f4dd1ea6c153d04b0e116d0242a1",
-      "installedAt": "2025-11-17T05:22:25.953444969+00:00"
-    },
-    {
-      "installName": "landing-the-plane",
-      "source": {
-        "repoKey": "github.com/lambdamechanic/skills",
-        "skillPath": "landing-the-plane"
-      },
-      "commit": "bb2c05e3582890b34bb896b9d74220bdffe0d8fa",
-      "digest": "sha256:b84fc40294d7a9e231861684e4adb0f396f4b862733c11cfc7919bb2d2b5b3c1",
-      "installedAt": "2025-11-17T00:45:35.676991308+00:00"
+      "installedAt": "2025-11-17T07:25:06.578213549+00:00"
     },
     {
       "installName": "testing",
@@ -91,10 +71,20 @@
         "repoKey": "github.com/lambdamechanic/skills",
         "skillPath": "testing"
       },
-      "commit": "bb2c05e3582890b34bb896b9d74220bdffe0d8fa",
+      "commit": "f38cc63f7b158188bf545ff9c19797509e0bc8a0",
       "digest": "sha256:53baa76aa35c488e87008e909ec7f437781cc3f0cb09e5ced6de6d6a34f0b537",
-      "installedAt": "2025-11-17T00:45:35.676991308+00:00"
+      "installedAt": "2025-11-17T07:25:06.578213549+00:00"
+    },
+    {
+      "installName": "lambda-workflow",
+      "source": {
+        "repoKey": "github.com/lambdamechanic/skills",
+        "skillPath": "lambda-workflow"
+      },
+      "commit": "f38cc63f7b158188bf545ff9c19797509e0bc8a0",
+      "digest": "sha256:ae27f473aa10d010d7e9d9144eef6280dba92eb2cb6499354a04d56738637dc7",
+      "installedAt": "2025-11-17T07:25:06.578213549+00:00"
     }
   ],
-  "generatedAt": "2025-11-17T05:22:25.953447036+00:00"
+  "generatedAt": "2025-11-17T07:25:06.578213549+00:00"
 }
