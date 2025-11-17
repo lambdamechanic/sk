@@ -34,7 +34,7 @@ fn repo_add_and_catalog_lists_skills() {
     let list = fx.run_json(&["repo", "list", "--json"]);
     let repos = list.as_array().expect("repo list array");
     assert_eq!(repos[0]["alias"], "demo");
-    assert_eq!(repos[0]["spec"]["repo"], "catalog-repo");
+    assert_eq!(repos[0]["repo"], "catalog-repo");
 }
 
 #[test]
