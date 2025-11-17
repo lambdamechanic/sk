@@ -143,6 +143,59 @@ fn mcp_server_search_and_show_skill() {
 }
 
 #[test]
+fn mcp_server_reports_missing_skills_root() {
+    let fx = CliFixture::new();
+    // Intentionally skip `sk init` so the skills directory is absent.
+    let mut child = fx
+        .sk_process()
+        .arg("mcp-server")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn mcp server");
+
+    let mut stdin = child.stdin.take().expect("stdin");
+    let stdout = child.stdout.take().expect("stdout");
+    let mut reader = BufReader::new(stdout);
+
+    send_frame(&mut stdin, initialize_request(1));
+    let init = expect_response(&mut reader, 1);
+    let instructions = init["result"]["instructions"].as_str().unwrap();
+    assert!(
+        instructions.contains("WARNING"),
+        "instructions should warn when skills root is missing: {instructions}"
+    );
+
+    send_frame(
+        &mut stdin,
+        json!({"jsonrpc":"2.0","method":"notifications/initialized","params":{}}),
+    );
+
+    send_frame(
+        &mut stdin,
+        json!({
+            "jsonrpc":"2.0",
+            "id":2,
+            "method":"tools/call",
+            "params":{
+                "name":"skills_list",
+                "arguments":{}
+            }
+        }),
+    );
+    let error_resp = expect_response(&mut reader, 2);
+    let message = error_resp["error"]["message"].as_str().unwrap_or_default();
+    assert!(
+        message.contains("sk MCP server unavailable"),
+        "expected helpful error message when skills root is missing, got: {message}"
+    );
+
+    drop(stdin);
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+#[test]
 fn mcp_server_tool_names_are_sanitized() {
     let fx = CliFixture::new();
     fx.sk_success(&["init"]);

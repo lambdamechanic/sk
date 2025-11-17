@@ -3,6 +3,7 @@ use anyhow::{bail, Context, Result};
 use chrono::Utc;
 use serde::Serialize;
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
 
 pub struct RepoAddArgs<'a> {
     pub repo: &'a str,
@@ -14,17 +15,12 @@ pub struct RepoListArgs {
     pub json: bool,
 }
 
-pub struct RepoCatalogArgs<'a> {
-    pub target: &'a str,
-    pub https: bool,
-    pub json: bool,
-}
-
 pub struct RepoSearchArgs<'a> {
-    pub query: &'a str,
+    pub query: Option<&'a str>,
     pub target: Option<&'a str>,
     pub https: bool,
     pub json: bool,
+    pub list_all: bool,
 }
 
 pub struct RepoRemoveArgs<'a> {
@@ -96,7 +92,7 @@ pub fn run_repo_list(args: RepoListArgs) -> Result<()> {
     for entry in &lockfile.repos.entries {
         let spec = &entry.spec;
         let repo_label = format!("{}/{}/{}", spec.host, spec.owner, spec.repo);
-        let counts = match load_available_skills_with_cache(spec) {
+        let snapshot = match load_repo_snapshot(spec) {
             Ok(counts) => counts,
             Err(err) => {
                 eprintln!(
@@ -106,14 +102,18 @@ pub fn run_repo_list(args: RepoListArgs) -> Result<()> {
                 continue;
             }
         };
-        if counts.dirty {
+        if snapshot.dirty {
             had_dirty = true;
         }
         let installed = installed_counts.get(entry.repo_key()).copied().unwrap_or(0);
-        let dirty_flag = if counts.dirty { "*" } else { "" };
+        let dirty_flag = if snapshot.dirty { "*" } else { "" };
         println!(
             "{:<12} {:<40} {:>6}{} {:>10}",
-            entry.alias, repo_label, counts.available, dirty_flag, installed
+            entry.alias,
+            repo_label,
+            snapshot.skills.len(),
+            dirty_flag,
+            installed
         );
     }
     if had_dirty {
@@ -122,43 +122,27 @@ pub fn run_repo_list(args: RepoListArgs) -> Result<()> {
     Ok(())
 }
 
-pub fn run_repo_catalog(args: RepoCatalogArgs) -> Result<()> {
-    let project_root = git::ensure_git_repo()?;
-    let cfg = config::load_or_default()?;
-    let lock_path = project_root.join("skills.lock.json");
-    let lockfile = lock::Lockfile::load_or_empty(&lock_path)?;
-    let spec = resolve_target_spec(args.target, &lockfile, &cfg, args.https)?;
-    let skills = load_skills_for_spec(&spec)?;
-
-    if args.json {
-        let entries: Vec<_> = skills
-            .iter()
-            .map(|skill| CatalogEntry {
-                name: skill.meta.name.clone(),
-                description: skill.meta.description.clone(),
-                path: skill.skill_path.clone(),
-            })
-            .collect();
-        println!("{}", serde_json::to_string_pretty(&entries)?);
-    } else if skills.is_empty() {
-        println!("No skills found in {}/{}", spec.owner, spec.repo);
-    } else {
-        for skill in skills {
-            println!(
-                "{}\t{}\t{}",
-                skill.meta.name, skill.skill_path, skill.meta.description
-            );
-        }
-    }
-
-    Ok(())
-}
-
 pub fn run_repo_search(args: RepoSearchArgs) -> Result<()> {
     let project_root = git::ensure_git_repo()?;
     let cfg = config::load_or_default()?;
     let lock_path = project_root.join("skills.lock.json");
     let lockfile = lock::Lockfile::load_or_empty(&lock_path)?;
+
+    let trimmed_query = args.query.and_then(|raw| {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    });
+    if args.list_all && trimmed_query.is_some() {
+        bail!(
+            "--all cannot be combined with a search query. Remove the query to list every skill."
+        );
+    }
+    let list_mode = args.list_all || trimmed_query.is_none();
+    let lowered_query = trimmed_query.as_ref().map(|s| s.to_lowercase());
 
     let targets: Vec<(String, git::RepoSpec)> = if let Some(target) = args.target {
         let spec = resolve_target_spec(target, &lockfile, &cfg, args.https)?;
@@ -181,12 +165,48 @@ pub fn run_repo_search(args: RepoSearchArgs) -> Result<()> {
             .collect()
     };
 
-    let needle = args.query.to_lowercase();
+    if list_mode && args.target.is_some() {
+        let (_, spec) = targets
+            .into_iter()
+            .next()
+            .expect("list mode with --repo should always yield one target");
+        let snapshot = load_repo_snapshot(&spec)?;
+        if args.json {
+            let entries: Vec<_> = snapshot
+                .skills
+                .iter()
+                .map(|skill| CatalogEntry {
+                    name: skill.meta.name.clone(),
+                    description: skill.meta.description.clone(),
+                    path: skill.skill_path.clone(),
+                })
+                .collect();
+            println!("{}", serde_json::to_string_pretty(&entries)?);
+        } else if snapshot.skills.is_empty() {
+            println!("No skills found in {}/{}", spec.owner, spec.repo);
+        } else {
+            for skill in snapshot.skills.iter() {
+                println!(
+                    "{}\t{}\t{}",
+                    skill.meta.name, skill.skill_path, skill.meta.description
+                );
+            }
+        }
+        return Ok(());
+    }
+
     let mut hits: Vec<SearchHit> = vec![];
     for (label, spec) in targets {
-        let skills = load_skills_for_spec(&spec)?;
-        for skill in skills {
-            if matches_query(&needle, &skill) {
+        let snapshot = load_repo_snapshot(&spec)?;
+        for skill in snapshot.skills.iter() {
+            let include = if list_mode {
+                true
+            } else if let Some(needle) = lowered_query.as_ref() {
+                matches_query(needle, skill)
+            } else {
+                false
+            };
+            if include {
                 hits.push(SearchHit {
                     repo: label.clone(),
                     name: skill.meta.name.clone(),
@@ -199,15 +219,25 @@ pub fn run_repo_search(args: RepoSearchArgs) -> Result<()> {
 
     if args.json {
         println!("{}", serde_json::to_string_pretty(&hits)?);
-    } else if hits.is_empty() {
-        println!("No skills matching '{}' found.", args.query);
-    } else {
-        for hit in hits {
-            println!(
-                "{}\t{}\t{}\t{}",
-                hit.repo, hit.name, hit.path, hit.description
-            );
+        return Ok(());
+    }
+
+    if hits.is_empty() {
+        if list_mode {
+            println!("No skills found in the cached repos.");
+        } else if let Some(query) = trimmed_query {
+            println!("No skills matching '{}' found.", query);
+        } else {
+            println!("No skills matching the requested filters found.");
         }
+        return Ok(());
+    }
+
+    for hit in hits {
+        println!(
+            "{}\t{}\t{}\t{}",
+            hit.repo, hit.name, hit.path, hit.description
+        );
     }
     Ok(())
 }
@@ -365,21 +395,34 @@ fn preferred_alias(spec: &git::RepoSpec) -> String {
     }
 }
 
-fn load_skills_for_spec(spec: &git::RepoSpec) -> Result<Vec<skills::DiscoveredSkill>> {
-    let cache_dir =
-        paths::resolve_or_primary_cache_path(&spec.url, &spec.host, &spec.owner, &spec.repo);
-    git::ensure_cached_repo(&cache_dir, spec)?;
-    let default_branch = git::detect_or_set_default_branch(&cache_dir, spec)?;
-    let commit = git::rev_parse(&cache_dir, &format!("refs/remotes/origin/{default_branch}"))?;
-    skills::list_skills_in_repo(&cache_dir, &commit)
-}
-
-struct RepoListCounts {
-    available: usize,
+#[derive(Clone)]
+struct RepoSkillSnapshot {
+    skills: Arc<Vec<skills::DiscoveredSkill>>,
     dirty: bool,
 }
 
-fn load_available_skills_with_cache(spec: &git::RepoSpec) -> Result<RepoListCounts> {
+static REPO_SKILL_CACHE: OnceLock<Mutex<HashMap<String, RepoSkillSnapshot>>> = OnceLock::new();
+
+fn load_repo_snapshot(spec: &git::RepoSpec) -> Result<RepoSkillSnapshot> {
+    let key = lock::repo_key(spec).to_string();
+    let cache = REPO_SKILL_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    {
+        let cache_guard = cache
+            .lock()
+            .expect("skill cache lock poisoned while reading");
+        if let Some(snapshot) = cache_guard.get(&key) {
+            return Ok(snapshot.clone());
+        }
+    }
+    let snapshot = build_repo_snapshot(spec)?;
+    cache
+        .lock()
+        .expect("skill cache lock poisoned while writing")
+        .insert(key, snapshot.clone());
+    Ok(snapshot)
+}
+
+fn build_repo_snapshot(spec: &git::RepoSpec) -> Result<RepoSkillSnapshot> {
     let cache_dir =
         paths::resolve_or_primary_cache_path(&spec.url, &spec.host, &spec.owner, &spec.repo);
     let repo_label = format!("{}/{}/{}", spec.host, spec.owner, spec.repo);
@@ -389,7 +432,7 @@ fn load_available_skills_with_cache(spec: &git::RepoSpec) -> Result<RepoListCoun
         Err(err) => {
             if cache_dir.join(".git").exists() {
                 dirty = true;
-                eprintln!("warning: unable to refresh {repo_label}; using cached counts ({err})");
+                eprintln!("warning: unable to refresh {repo_label}; using cached data ({err})");
             } else {
                 return Err(err.context(format!("failed to cache repo {repo_label}")));
             }
@@ -399,10 +442,13 @@ fn load_available_skills_with_cache(spec: &git::RepoSpec) -> Result<RepoListCoun
         .with_context(|| format!("determining default branch for {repo_label}"))?;
     let commit = git::rev_parse(&cache_dir, &format!("refs/remotes/origin/{default_branch}"))
         .with_context(|| format!("reading cached commit for {repo_label}"))?;
-    let available = skills::list_skills_in_repo(&cache_dir, &commit)
-        .with_context(|| format!("listing skills for {repo_label}"))?
-        .len();
-    Ok(RepoListCounts { available, dirty })
+    let skills = skills::list_skills_in_repo(&cache_dir, &commit)
+        .with_context(|| format!("listing skills for {repo_label}"))?;
+
+    Ok(RepoSkillSnapshot {
+        skills: Arc::new(skills),
+        dirty,
+    })
 }
 
 fn matches_query(needle: &str, skill: &skills::DiscoveredSkill) -> bool {

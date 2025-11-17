@@ -38,23 +38,30 @@ const MAX_SEARCH_LIMIT: usize = 25;
 const DEFAULT_SEARCH_LIMIT: usize = 10;
 const QUICKSTART_URI: &str = "sk://quickstart";
 const QUICKSTART_DOC: &str = include_str!("../docs/AGENT_QUICKSTART.md");
-const SERVER_INSTRUCTIONS: &str = "Start every task with skills_search to confirm whether a repo skill applies, then use skills_list or skills_show to pull the relevant body text when needed.";
+const BASE_SERVER_INSTRUCTIONS: &str = "Start every task with skills_search to confirm whether a repo skill applies, then use skills_list or skills_show to pull the relevant body text when needed.";
 
 pub fn run_server(root_override: Option<&str>) -> Result<()> {
     let project_root = git::ensure_git_repo()?;
     let cfg = config::load_or_default()?;
     let install_root_rel = root_override.unwrap_or(&cfg.default_root);
     let skills_root = paths::resolve_project_path(&project_root, install_root_rel);
-    if !skills_root.exists() {
-        anyhow::bail!(
-            "skills root {} does not exist",
-            skills_root
-                .strip_prefix(&project_root)
-                .unwrap_or(&skills_root)
-                .display()
+    let availability = if skills_root.exists() {
+        Availability::Ready
+    } else {
+        let relative = relative_path(&skills_root, &project_root);
+        let reason = format!(
+            "skills root '{relative}' is missing (expected at {})",
+            skills_root.display()
+        );
+        Availability::Unavailable { reason }
+    };
+    if let Availability::Unavailable { reason } = &availability {
+        eprintln!(
+            "warning: {reason}. Ask the user to run `sk init` in {} or set `sk config default_root` correctly before retrying.",
+            project_root.display()
         );
     }
-    let server = SkMcpServer::new(project_root, skills_root);
+    let server = SkMcpServer::new(project_root, skills_root, availability);
     let runtime = TokioRuntimeBuilder::new_multi_thread()
         .enable_all()
         .build()
@@ -70,15 +77,26 @@ async fn serve_stdio(server: SkMcpServer) -> Result<()> {
         .context("failed to start MCP server")?;
     let peer = running.peer().clone();
     let initialized_flag = server.initialized.clone();
-    let (notify_tx, notify_rx) = mpsc::unbounded_channel();
-    let watcher = spawn_tool_watcher(server.skills_root.clone(), notify_tx)
-        .context("failed to start skills watcher")?;
-    let notify_task =
-        tokio::spawn(async move { forward_notifications(notify_rx, peer, initialized_flag).await });
+    let (watcher, notify_task) = if server.is_ready() {
+        let (notify_tx, notify_rx) = mpsc::unbounded_channel();
+        let watcher = spawn_tool_watcher(server.skills_root.clone(), notify_tx)
+            .context("failed to start skills watcher")?;
+        let peer_clone = peer.clone();
+        let init_clone = initialized_flag.clone();
+        let notify_task =
+            tokio::spawn(
+                async move { forward_notifications(notify_rx, peer_clone, init_clone).await },
+            );
+        (Some(watcher), Some(notify_task))
+    } else {
+        (None, None)
+    };
 
     let wait_result = running.waiting().await;
     drop(watcher);
-    notify_task.abort();
+    if let Some(task) = notify_task {
+        task.abort();
+    }
     match wait_result {
         Ok(_) => Ok(()),
         Err(err) => Err(err).context("server task failed"),
@@ -151,15 +169,51 @@ struct SkMcpServer {
     skills_root: PathBuf,
     tool_router: ToolRouter<Self>,
     initialized: Arc<AtomicBool>,
+    availability: Availability,
+}
+
+#[derive(Clone)]
+enum Availability {
+    Ready,
+    Unavailable { reason: String },
 }
 
 impl SkMcpServer {
-    fn new(project_root: PathBuf, skills_root: PathBuf) -> Self {
+    fn new(project_root: PathBuf, skills_root: PathBuf, availability: Availability) -> Self {
         Self {
             project_root,
             skills_root,
             tool_router: Self::tool_router(),
             initialized: Arc::new(AtomicBool::new(false)),
+            availability,
+        }
+    }
+
+    fn is_ready(&self) -> bool {
+        matches!(self.availability, Availability::Ready)
+    }
+
+    fn guard_ready(&self) -> Result<(), McpError> {
+        match &self.availability {
+            Availability::Ready => Ok(()),
+            Availability::Unavailable { reason } => Err(McpError::internal_error(
+                format!(
+                    "sk MCP server unavailable: {reason}. Ask the user to run `sk init` in {} or fix `sk config default_root`.",
+                    self.project_root.display()
+                ),
+                None,
+            )),
+        }
+    }
+
+    fn instructions_text(&self) -> String {
+        match &self.availability {
+            Availability::Ready => BASE_SERVER_INSTRUCTIONS.to_string(),
+            Availability::Unavailable { reason } => format!(
+                "{base}\n\nWARNING: {reason}. Tell the user to run `sk init` from {root} (or configure `sk config set default_root`) so the skills directory exists before retrying MCP calls.",
+                base = BASE_SERVER_INSTRUCTIONS,
+                root = self.project_root.display()
+            ),
         }
     }
 
@@ -168,6 +222,7 @@ impl SkMcpServer {
     }
 
     fn list_skills(&self, args: ListArgs) -> Result<CallToolResult, McpError> {
+        self.guard_ready()?;
         let skills =
             scan_skills(&self.project_root, &self.skills_root).map_err(to_internal_error)?;
         let filtered: Vec<_> = if let Some(query) = args.query.as_deref().map(str::trim) {
@@ -201,6 +256,7 @@ impl SkMcpServer {
     }
 
     fn search_skills(&self, args: SearchArgs) -> Result<CallToolResult, McpError> {
+        self.guard_ready()?;
         let query = args.query.trim();
         if query.is_empty() {
             return Err(McpError::invalid_params("query must not be empty", None));
@@ -266,6 +322,7 @@ impl SkMcpServer {
     }
 
     fn show_skill(&self, args: ShowArgs) -> Result<CallToolResult, McpError> {
+        self.guard_ready()?;
         let raw = args.skill_name.trim();
         if raw.is_empty() {
             return Err(McpError::invalid_params(
@@ -353,7 +410,7 @@ impl ServerHandler for SkMcpServer {
                 .enable_resources()
                 .build(),
             server_info: server_implementation(),
-            instructions: Some(SERVER_INSTRUCTIONS.to_string()),
+            instructions: Some(self.instructions_text()),
         }
     }
 

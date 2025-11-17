@@ -7,7 +7,7 @@ mod support;
 use support::CliFixture;
 
 #[test]
-fn repo_add_and_catalog_lists_skills() {
+fn repo_search_lists_skills_with_and_without_all_flag() {
     let fx = CliFixture::new();
     fx.sk_success(&["init"]);
     let remote = fx.create_remote("catalog-repo", ".", "demo-skill");
@@ -26,8 +26,13 @@ fn repo_add_and_catalog_lists_skills() {
         repos
     );
 
-    let catalog = fx.run_json(&["repo", "catalog", "demo", "--json"]);
-    let entries = catalog.as_array().expect("catalog json array");
+    let via_all = fx.run_json(&["repo", "search", "--repo", "demo", "--all", "--json"]);
+    let via_blank_query = fx.run_json(&["repo", "search", "--repo", "demo", "--json"]);
+    assert_eq!(
+        via_all, via_blank_query,
+        "listing should match regardless of --all flag"
+    );
+    let entries = via_all.as_array().expect("search json array");
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0]["name"], "demo-skill");
 
@@ -38,12 +43,19 @@ fn repo_add_and_catalog_lists_skills() {
 }
 
 #[test]
-fn repo_catalog_accepts_direct_repo_input() {
+fn repo_search_accepts_direct_repo_input() {
     let fx = CliFixture::new();
     fx.sk_success(&["init"]);
     let remote = fx.create_remote("direct-repo", ".", "direct-skill");
 
-    let catalog = fx.run_json(&["repo", "catalog", &remote.file_url(), "--json"]);
+    let catalog = fx.run_json(&[
+        "repo",
+        "search",
+        "--repo",
+        &remote.file_url(),
+        "--all",
+        "--json",
+    ]);
     assert_eq!(catalog[0]["name"], "direct-skill");
 }
 
@@ -79,6 +91,54 @@ fn repo_search_accepts_repo_flag() {
         "--json",
     ]);
     assert_eq!(hits[0]["name"], "gamma-skill");
+}
+
+#[test]
+fn repo_search_without_query_lists_all_repos() {
+    let fx = CliFixture::new();
+    fx.sk_success(&["init"]);
+    let alpha = fx.create_remote("alpha-list", ".", "alpha-skill");
+    let beta = fx.create_remote("beta-list", ".", "beta-skill");
+
+    fx.sk_success(&["repo", "add", &alpha.file_url(), "--alias", "alpha"]);
+    fx.sk_success(&["repo", "add", &beta.file_url(), "--alias", "beta"]);
+
+    let hits = fx.run_json(&["repo", "search", "--json"]);
+    let array = hits.as_array().expect("list-all hits array");
+    assert_eq!(array.len(), 2);
+    let mut repos: Vec<_> = array
+        .iter()
+        .map(|hit| hit["repo"].as_str().expect("repo string").to_string())
+        .collect();
+    repos.sort();
+    assert_eq!(repos, vec!["alpha".to_string(), "beta".to_string()]);
+}
+
+#[test]
+fn repo_catalog_alias_warns_and_lists() {
+    let fx = CliFixture::new();
+    fx.sk_success(&["init"]);
+    let remote = fx.create_remote("alias-catalog", ".", "alias-skill");
+
+    fx.sk_success(&["repo", "add", &remote.file_url(), "--alias", "alias"]);
+
+    let out = fx
+        .sk_cmd()
+        .args(["repo", "catalog", "alias", "--json"])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "repo catalog alias failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let entries: Value = serde_json::from_slice(&out.stdout).expect("catalog json");
+    assert_eq!(entries[0]["name"], "alias-skill");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("repo catalog") && stderr.contains("repo search"),
+        "expected deprecation warning mentioning repo search: {stderr}"
+    );
 }
 
 #[test]
