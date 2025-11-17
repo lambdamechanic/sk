@@ -8,9 +8,9 @@ use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters, ServerHandler},
     model::{
-        CallToolResult, Content, ListResourcesResult, PaginatedRequestParam, ProtocolVersion,
-        RawResource, ReadResourceRequestParam, ReadResourceResult, Resource, ResourceContents,
-        ServerCapabilities, ServerInfo,
+        CallToolResult, Content, Implementation, ListResourcesResult, PaginatedRequestParam,
+        ProtocolVersion, RawResource, ReadResourceRequestParam, ReadResourceResult, Resource,
+        ResourceContents, ServerCapabilities, ServerInfo,
     },
     service::{Peer, RoleServer, ServiceExt},
     tool, tool_handler, tool_router,
@@ -352,7 +352,7 @@ impl ServerHandler for SkMcpServer {
                 .enable_tool_list_changed()
                 .enable_resources()
                 .build(),
-            server_info: rmcp::model::Implementation::from_build_env(),
+            server_info: server_implementation(),
             instructions: Some(SERVER_INSTRUCTIONS.to_string()),
         }
     }
@@ -439,4 +439,14 @@ fn make_tool_result(contents: Vec<Content>, structured: Value) -> CallToolResult
 
 fn to_internal_error(err: anyhow::Error) -> McpError {
     McpError::internal_error(err.to_string(), None)
+}
+
+fn server_implementation() -> Implementation {
+    Implementation {
+        name: "sk".into(),
+        title: Some("sk".into()),
+        version: env!("CARGO_PKG_VERSION").into(),
+        icons: None,
+        website_url: None,
+    }
 }
