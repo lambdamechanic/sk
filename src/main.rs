@@ -22,8 +22,9 @@ use owo_colors::OwoColorize;
 
 use crate::cli::{Cli, Commands, ConfigCmd, RepoCmd, TemplateCmd};
 use serde::Serialize;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::io::IsTerminal;
+use std::thread;
 use unicode_width::UnicodeWidthStr;
 
 fn main() -> Result<()> {
@@ -380,58 +381,124 @@ fn cmd_status(names: &[String], root_flag: Option<&str>, json: bool) -> Result<(
 fn cmd_diff(names: &[String], root_flag: Option<&str>) -> Result<()> {
     let ctx = load_project_context(root_flag)?;
     let targets = select_skills(&ctx.lockfile.skills, names);
-    if targets.is_empty() {
-        println!("No matching skills to diff.");
-        return Ok(());
-    }
-    let stdout_is_tty = std::io::stdout().is_terminal();
-    for (idx, skill) in targets.iter().enumerate() {
-        if idx > 0 {
-            println!();
+    if names.is_empty() {
+        if targets.is_empty() {
+            return Ok(());
         }
-        let display_name = if stdout_is_tty {
-            skill.install_name.as_str().bold().bright_cyan().to_string()
-        } else {
-            skill.install_name.clone()
+    } else if targets.len() != names.len() {
+        let resolved: HashSet<&str> = targets.iter().map(|s| s.install_name.as_str()).collect();
+        let missing: Vec<&String> = names
+            .iter()
+            .filter(|name| !resolved.contains(name.as_str()))
+            .collect();
+        if !missing.is_empty() {
+            bail!(
+                "No installed skills matched: {}",
+                missing
+                    .into_iter()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
+    }
+    let repo_tips = resolve_remote_tips_for_targets(&targets);
+    let stdout_is_tty = std::io::stdout().is_terminal();
+    let mut printed_any = false;
+    for skill in targets {
+        let key = build_repo_key(skill);
+        let remote = match repo_tips.get(&key).cloned() {
+            Some(Ok(tip)) => tip,
+            Some(Err(err)) => {
+                eprintln!("{}: {}", skill.install_name, err);
+                continue;
+            }
+            None => {
+                eprintln!("{}: missing repo metadata", skill.install_name);
+                continue;
+            }
         };
-        println!("==> {}", display_name);
-        match resolve_remote_tip(skill) {
-            Ok(remote) => {
+        match diff_skill(&ctx.install_root, skill, &remote) {
+            Ok(DiffOutcome::Diff(diff_text)) => {
+                let display_name = if stdout_is_tty {
+                    skill.install_name.as_str().bold().bright_cyan().to_string()
+                } else {
+                    skill.install_name.clone()
+                };
+                if printed_any {
+                    println!();
+                }
+                println!("==> {}", display_name);
                 println!(
                     "remote: {} @ {} (origin/{})",
                     format_repo_id(skill),
                     &remote.commit[..7],
                     remote.branch
                 );
-                match diff_skill(&ctx.install_root, skill, &remote) {
-                    Ok(DiffOutcome::DiffShown) => {}
-                    Ok(DiffOutcome::NoDiff) => println!("(no differences)"),
-                    Err(err) => eprintln!("  error: {err:#}"),
-                }
+                print!("{diff_text}");
+                printed_any = true;
             }
-            Err(err) => eprintln!("  error: {err:#}"),
+            Ok(DiffOutcome::NoDiff) => {}
+            Err(err) => eprintln!("{}: {:#}", skill.install_name, err),
         }
+    }
+    if !printed_any {
+        // Intentionally silent when nothing differs.
     }
     Ok(())
 }
 
-enum DiffOutcome {
-    DiffShown,
-    NoDiff,
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+struct RepoKey {
+    url: String,
+    host: String,
+    owner: String,
+    repo: String,
 }
 
-struct RemoteTip {
-    cache_dir: std::path::PathBuf,
-    branch: String,
-    commit: String,
+fn build_repo_key(skill: &lock::LockSkill) -> RepoKey {
+    let spec = skill.source.repo_spec();
+    RepoKey {
+        url: spec.url.clone(),
+        host: spec.host.clone(),
+        owner: spec.owner.clone(),
+        repo: spec.repo.clone(),
+    }
 }
 
-fn resolve_remote_tip(skill: &lock::LockSkill) -> Result<RemoteTip> {
-    let spec = skill.source.repo_spec_owned();
+fn resolve_remote_tips_for_targets(
+    skills: &[&lock::LockSkill],
+) -> HashMap<RepoKey, Result<RemoteTip, String>> {
+    let mut uniq: HashSet<RepoKey> = HashSet::new();
+    for skill in skills {
+        uniq.insert(build_repo_key(skill));
+    }
+    let mut handles = Vec::new();
+    for key in uniq.into_iter() {
+        handles.push(thread::spawn(move || {
+            let result = resolve_remote_tip_for_key(&key).map_err(|err| format!("{err:#}"));
+            (key, result)
+        }));
+    }
+    let mut map = HashMap::new();
+    for handle in handles {
+        let (key, result) = handle.join().expect("repo refresh thread panicked");
+        map.insert(key, result);
+    }
+    map
+}
+
+fn resolve_remote_tip_for_key(key: &RepoKey) -> Result<RemoteTip> {
     let cache_dir =
-        paths::resolve_or_primary_cache_path(&spec.url, &spec.host, &spec.owner, &spec.repo);
+        paths::resolve_or_primary_cache_path(&key.url, &key.host, &key.owner, &key.repo);
+    let spec = git::RepoSpec {
+        url: key.url.clone(),
+        host: key.host.clone(),
+        owner: key.owner.clone(),
+        repo: key.repo.clone(),
+    };
     git::ensure_cached_repo(&cache_dir, &spec)
-        .with_context(|| format!("refreshing cache for {}", format_repo_id(skill)))?;
+        .with_context(|| format!("refreshing cache for {}/{}", spec.owner, spec.repo))?;
     let branch = git::detect_or_set_default_branch(&cache_dir, &spec)?;
     let tip = git::rev_parse(&cache_dir, &format!("refs/remotes/origin/{branch}"))?;
     Ok(RemoteTip {
@@ -439,6 +506,18 @@ fn resolve_remote_tip(skill: &lock::LockSkill) -> Result<RemoteTip> {
         branch,
         commit: tip,
     })
+}
+
+enum DiffOutcome {
+    Diff(String),
+    NoDiff,
+}
+
+#[derive(Clone)]
+struct RemoteTip {
+    cache_dir: std::path::PathBuf,
+    branch: String,
+    commit: String,
 }
 
 fn diff_skill(
@@ -464,7 +543,8 @@ fn diff_skill(
             &remote.commit[..7]
         )
     })?;
-    let status = std::process::Command::new("git")
+    let output = std::process::Command::new("git")
+        .arg("--no-pager")
         .arg("-c")
         .arg("core.autocrlf=false")
         .arg("diff")
@@ -474,12 +554,22 @@ fn diff_skill(
         .arg("--")
         .arg(&local_dir)
         .arg(checkout.path())
-        .status()
+        .output()
         .context("git diff --no-index failed to run")?;
-    match status.code() {
+    match output.status.code() {
         Some(0) => Ok(DiffOutcome::NoDiff),
-        Some(1) => Ok(DiffOutcome::DiffShown),
-        Some(code) => bail!("git diff exited with status {code}"),
+        Some(1) => {
+            let text = String::from_utf8_lossy(&output.stdout).into_owned();
+            if text.trim().is_empty() {
+                Ok(DiffOutcome::NoDiff)
+            } else {
+                Ok(DiffOutcome::Diff(text))
+            }
+        }
+        Some(code) => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            bail!("git diff exited with status {code}: {stderr}");
+        }
         None => bail!("git diff terminated by signal"),
     }
 }

@@ -24,8 +24,8 @@ fn diff_reports_clean_install() {
     );
     let stdout = stdout_string(&output);
     assert!(
-        stdout.contains("(no differences)"),
-        "expected clean diff output:\n{}",
+        stdout.trim().is_empty(),
+        "expected no output for clean installs:\n{}",
         stdout
     );
 }
@@ -46,6 +46,11 @@ fn diff_shows_remote_updates_after_cache_refresh() {
         output.stderr
     );
     let stdout = stdout_string(&output);
+    assert!(
+        stdout.contains("==> demo"),
+        "expected diff header to mention the skill:\n{}",
+        stdout
+    );
     assert!(
         stdout.contains("+v2"),
         "expected diff to show remote additions:\n{}",
@@ -72,8 +77,8 @@ fn diff_recovers_missing_cache() {
     );
     let stdout = stdout_string(&output);
     assert!(
-        stdout.contains("(no differences)"),
-        "expected clean diff output after re-cloning the cache:\n{}",
+        stdout.trim().is_empty(),
+        "expected no output after cache recovery when no diff exists:\n{}",
         stdout
     );
 }
@@ -84,9 +89,16 @@ fn cache_dir_for_first_skill(lock: Json, cache_root: &std::path::Path) -> std::p
         .and_then(|arr| arr.first())
         .expect("lock contains at least one skill");
     let source = &skill["source"];
-    let host = source["host"].as_str().expect("host");
-    let owner = source["owner"].as_str().expect("owner");
-    let repo = source["repo"].as_str().expect("repo");
-    let url = source["url"].as_str().expect("url");
+    let repo_key = source["repoKey"].as_str().expect("repoKey");
+    let mut parts = repo_key.splitn(3, '/');
+    let host = parts.next().expect("host");
+    let owner = parts.next().expect("owner");
+    let repo = parts.next().expect("repo segment");
+    let repos = lock["repos"]["entries"].as_array().expect("repos array");
+    let url = repos
+        .iter()
+        .find(|entry| entry["key"] == repo_key)
+        .and_then(|entry| entry["url"].as_str())
+        .expect("repo url");
     cache_repo_path(cache_root, host, owner, repo, url)
 }

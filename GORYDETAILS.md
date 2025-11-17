@@ -1,7 +1,7 @@
 # GORYDETAILS — internals, workflows, and command reference
 
 ## Catalog workflows in depth
-`sk repo add` clones a remote skills catalog into your per-user cache and records the alias inside `skills.repos.json` so everyone in the repo can reuse it. After caching, you can browse or script against the catalog without installing anything yet.
+`sk repo add` clones a remote skills catalog into your per-user cache and records the alias inside the `skills.lock.json` repo registry so everyone in the repo can reuse it. After caching, you can browse or script against the catalog without installing anything yet.
 
 ```bash
 sk repo add @anthropics/skills --alias anthropic
@@ -50,8 +50,7 @@ make qlty-smells               # blocking; use make qlty-smells-advisory for war
 
 ## Key concepts & layout
 - `skills/` — default install root (override via `sk init --root` or `sk config set default_root`).
-- `skills.lock.json` — lockfile tracking each installed skill (name, repo URL, commit, digest, timestamp).
-- `skills.repos.json` — optional catalog registry populated by `sk repo add` so teammates know which repos you’ve cached.
+- `skills.lock.json` — lockfile tracking each installed skill plus the shared repo registry (name, repo URL, commit, digest, timestamps, aliases).
 - Cache clones live under `~/.cache/sk/repos/<host>/<owner>/<repo>` (override with `SK_CACHE_DIR`).
 - User config lives in `~/.config/sk/config.json` (override with `SK_CONFIG_DIR`). Keys include `default_root`, `default_repo`, `template_source`, `protocol` (`ssh` or `https`), `default_host`, `github_user`.
 - Every skill subdirectory needs `SKILL.md` with YAML front matter declaring `name` and `description`.
@@ -65,7 +64,7 @@ make qlty-smells               # blocking; use make qlty-smells-advisory for war
 | `sk check [name...] [--json]` | Quick OK/modified/missing status for installs. |
 | `sk status [name...] [--json]` | Compare digests plus show upstream tip (`old -> new`). |
 | `sk diff [name...]` | Show textual diffs between local installs and the cached remote default-branch tip. |
-| `sk repo add <repo> [--alias foo]` | Cache a remote repo (and record it in `skills.repos.json`) without installing a skill yet. |
+| `sk repo add <repo> [--alias foo]` | Cache a remote repo (and record it in `skills.lock.json`’s repo registry) without installing a skill yet. |
 | `sk repo list [--json]` | Show cached repos plus total skills vs. installed counts; unreachable repos reuse cached counts and show a `*` next to the SKILLS column (`--json` prints the raw registry). |
 | `sk repo remove <alias-or-repo> [--json]` | Remove a cached repo entry by alias or repo spec when it’s no longer needed. |
 | `sk repo catalog <alias-or-repo> [--json]` | List every skill exposed by a cached repo before installing. |

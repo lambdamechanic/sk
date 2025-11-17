@@ -35,10 +35,7 @@ fn mcp_server_search_and_show_skill() {
     let stdout = child.stdout.take().expect("stdout");
     let mut reader = BufReader::new(stdout);
 
-    send_frame(
-        &mut stdin,
-        json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}),
-    );
+    send_frame(&mut stdin, initialize_request(1));
     let init = expect_response(&mut reader, 1);
     let server_name = init["result"]["serverInfo"]["name"].as_str().unwrap();
     assert_eq!(server_name, "sk");
@@ -162,10 +159,7 @@ fn mcp_server_tool_names_are_sanitized() {
     let stdout = child.stdout.take().expect("stdout");
     let mut reader = BufReader::new(stdout);
 
-    send_frame(
-        &mut stdin,
-        json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}),
-    );
+    send_frame(&mut stdin, initialize_request(1));
     let _ = expect_response(&mut reader, 1);
 
     send_frame(
@@ -216,4 +210,20 @@ fn expect_response(reader: &mut BufReader<ChildStdout>, id: i64) -> Value {
             }
         }
     }
+}
+
+fn initialize_request(id: i64) -> Value {
+    json!({
+        "jsonrpc":"2.0",
+        "id": id,
+        "method":"initialize",
+        "params":{
+            "protocolVersion":"2025-03-26",
+            "capabilities":{},
+            "clientInfo":{
+                "name":"sk-tests",
+                "version":"0.0.0"
+            }
+        }
+    })
 }

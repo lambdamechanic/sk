@@ -127,8 +127,7 @@ make qlty-smells               # blocking (use make qlty-smells-advisory for war
 
 ## Key concepts & layout
 - `skills/` — default install root (override via `sk init --root` or `sk config set default_root`).
-- `skills.lock.json` — versioned lockfile tracking each installed skill (`installName`, repo URL, commit, digest, install timestamp).
-- `skills.repos.json` — optional catalog registry populated by `sk repo add` so teammates know which repos you’ve cached.
+- `skills.lock.json` — versioned lockfile tracking each installed skill plus the shared repo registry (aliases, repo specs, commit/digest, timestamps).
 - Cache clones live under `~/.cache/sk/repos/<host>/<owner>/<repo>` (override with `SK_CACHE_DIR`).
 - User config lives in `~/.config/sk/config.json` (override with `SK_CONFIG_DIR`). Keys: `default_root`, `default_repo`, `template_source`, `protocol` (`ssh` or `https`), `default_host`, `github_user`.
 - Every skill subdirectory must contain `SKILL.md` with YAML front-matter that declares `name` and `description`.
@@ -173,7 +172,7 @@ That paragraph solves the “chicken-and-egg” problem: the agent reads the pol
 | `sk list` / `sk where <name>` | Inspect installed skill set or find the on-disk path. |
 | `sk check [name...] [--json]` | Quick OK/modified/missing status for installs. |
 | `sk status [name...] [--json]` | Compare digests plus show upstream tip (`old -> new`). |
-| `sk repo add <repo> [--alias foo]` | Cache a remote repo (and record it in `skills.repos.json`) without installing a skill yet. |
+| `sk repo add <repo> [--alias foo]` | Cache a remote repo (and record it in `skills.lock.json`’s repo registry) without installing a skill yet. |
 | `sk repo list [--json]` | Show cached repos + their aliases. |
 | `sk repo remove <alias-or-repo> [--json]` | Drop a cached repo entry (alias or repo spec) when you no longer need it. |
 | `sk repo catalog <alias-or-repo> [--json]` | List every skill exposed by a cached repo before installing. |

@@ -75,12 +75,21 @@ fn install_from_file_url_writes_lock_and_files() {
     assert_eq!(skills.len(), 1);
     let entry = &skills[0];
     assert_eq!(entry["installName"].as_str().unwrap(), "sfile");
-    assert_eq!(entry["source"]["url"].as_str().unwrap(), &file_url);
-    assert_eq!(entry["source"]["repo"].as_str().unwrap(), "r");
-    assert_eq!(entry["source"]["host"].as_str().unwrap(), "local");
-    assert_eq!(entry["source"]["owner"].as_str().unwrap(), "remotes");
+    assert_eq!(
+        entry["source"]["repoKey"].as_str().unwrap(),
+        "local/remotes/r"
+    );
+    assert_eq!(entry["source"]["skillPath"].as_str().unwrap(), "skill");
     // Commit pinned should be the work HEAD
     assert_eq!(entry["commit"].as_str().unwrap(), &head);
+
+    let repos = lock["repos"]["entries"].as_array().unwrap();
+    assert_eq!(repos.len(), 1);
+    let repo = &repos[0];
+    assert_eq!(repo["url"].as_str().unwrap(), &file_url);
+    assert_eq!(repo["repo"].as_str().unwrap(), "r");
+    assert_eq!(repo["host"].as_str().unwrap(), "local");
+    assert_eq!(repo["owner"].as_str().unwrap(), "remotes");
 
     // sk check should report ok
     let mut chk = cargo_bin_cmd!("sk");
