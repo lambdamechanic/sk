@@ -64,11 +64,6 @@ sk upgrade brand-guidelines
 ```
 Use `sk upgrade --all` when you want every installed skill to follow its upstream tip.
 
-### Doctest sample
-```rust
-assert_eq!(1 + 1, 2);
-```
-
 ## Need the gory details?
 Implementation notes, machine-readable catalog output, cache layouts, building from source, and the full command cheat sheet now live in `GORYDETAILS.md`.
 
