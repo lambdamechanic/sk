@@ -26,7 +26,7 @@ sk repo add @anthropics/skills --alias anthropic
 sk repo list
 ```
 Example `sk repo list` output:
-```
+```text
 ALIAS       REPO                                SKILLS  INSTALLED
 anthropic   github.com/anthropics/skills        120     3
 ```
@@ -63,6 +63,11 @@ sk sync-back frontend-design -m "Revise guidance tone"
 sk upgrade frontend-design
 ```
 Use `sk upgrade --all` when you want every installed skill to follow its upstream tip.
+
+### Doctest sample
+```rust
+assert_eq!(1 + 1, 2);
+```
 
 ## Need the gory details?
 Implementation notes, machine-readable catalog output, cache layouts, building from source, and the full command cheat sheet now live in `GORYDETAILS.md`.
