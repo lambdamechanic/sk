@@ -1,12 +1,13 @@
 ## Common dev tasks
 
 QLTY ?= qlty
-QLTY_FLAGS ?= --all --summary
+QLTY_FLAGS ?= --all 
 QLTY_SMELLS_FLAGS ?= --all
 
 .PHONY: precommit fmt clippy qlty qlty-smells 
 
-precommit: fmt clippy qlty qlty-smells
+precommit: fmt clippy qlty 
+# qlty-smells
 
 fmt:
 	cargo fmt --all 

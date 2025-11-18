@@ -1,7 +1,6 @@
 use crate::{config, git, lock, paths, skills};
 use anyhow::{bail, Context, Result};
 use chrono::Utc;
-use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -13,14 +12,6 @@ pub struct RepoAddArgs<'a> {
 
 pub struct RepoListArgs {
     pub json: bool,
-}
-
-pub struct RepoSearchArgs<'a> {
-    pub query: Option<&'a str>,
-    pub target: Option<&'a str>,
-    pub https: bool,
-    pub json: bool,
-    pub list_all: bool,
 }
 
 pub struct RepoRemoveArgs<'a> {
@@ -122,125 +113,8 @@ pub fn run_repo_list(args: RepoListArgs) -> Result<()> {
     Ok(())
 }
 
-pub fn run_repo_search(args: RepoSearchArgs) -> Result<()> {
-    let project_root = git::ensure_git_repo()?;
-    let cfg = config::load_or_default()?;
-    let lock_path = project_root.join("skills.lock.json");
-    let lockfile = lock::Lockfile::load_or_empty(&lock_path)?;
-
-    let trimmed_query = args.query.and_then(|raw| {
-        let trimmed = raw.trim();
-        if trimmed.is_empty() {
-            None
-        } else {
-            Some(trimmed.to_string())
-        }
-    });
-    if args.list_all && trimmed_query.is_some() {
-        bail!(
-            "--all cannot be combined with a search query. Remove the query to list every skill."
-        );
-    }
-    let list_mode = args.list_all || trimmed_query.is_none();
-    let lowered_query = trimmed_query.as_ref().map(|s| s.to_lowercase());
-
-    let targets: Vec<(String, git::RepoSpec)> = if let Some(target) = args.target {
-        let spec = resolve_target_spec(target, &lockfile, &cfg, args.https)?;
-        let label = lockfile
-            .repos
-            .entry_by_key(&lock::repo_key(&spec))
-            .map(|entry| entry.alias.clone())
-            .unwrap_or_else(|| format!("{}/{}", spec.owner, spec.repo));
-        vec![(label, spec)]
-    } else if lockfile.repos.entries.is_empty() {
-        bail!(
-            "No repos registered. Run 'sk repo add <repo>' first or pass --repo <alias-or-repo>."
-        );
-    } else {
-        lockfile
-            .repos
-            .entries
-            .iter()
-            .map(|entry| (entry.alias.clone(), entry.spec.clone()))
-            .collect()
-    };
-
-    if list_mode && args.target.is_some() {
-        let (_, spec) = targets
-            .into_iter()
-            .next()
-            .expect("list mode with --repo should always yield one target");
-        let snapshot = load_repo_snapshot(&spec)?;
-        if args.json {
-            let entries: Vec<_> = snapshot
-                .skills
-                .iter()
-                .map(|skill| CatalogEntry {
-                    name: skill.meta.name.clone(),
-                    description: skill.meta.description.clone(),
-                    path: skill.skill_path.clone(),
-                })
-                .collect();
-            println!("{}", serde_json::to_string_pretty(&entries)?);
-        } else if snapshot.skills.is_empty() {
-            println!("No skills found in {}/{}", spec.owner, spec.repo);
-        } else {
-            for skill in snapshot.skills.iter() {
-                println!(
-                    "{}\t{}\t{}",
-                    skill.meta.name, skill.skill_path, skill.meta.description
-                );
-            }
-        }
-        return Ok(());
-    }
-
-    let mut hits: Vec<SearchHit> = vec![];
-    for (label, spec) in targets {
-        let snapshot = load_repo_snapshot(&spec)?;
-        for skill in snapshot.skills.iter() {
-            let include = if list_mode {
-                true
-            } else if let Some(needle) = lowered_query.as_ref() {
-                matches_query(needle, skill)
-            } else {
-                false
-            };
-            if include {
-                hits.push(SearchHit {
-                    repo: label.clone(),
-                    name: skill.meta.name.clone(),
-                    description: skill.meta.description.clone(),
-                    path: skill.skill_path.clone(),
-                });
-            }
-        }
-    }
-
-    if args.json {
-        println!("{}", serde_json::to_string_pretty(&hits)?);
-        return Ok(());
-    }
-
-    if hits.is_empty() {
-        if list_mode {
-            println!("No skills found in the cached repos.");
-        } else if let Some(query) = trimmed_query {
-            println!("No skills matching '{}' found.", query);
-        } else {
-            println!("No skills matching the requested filters found.");
-        }
-        return Ok(());
-    }
-
-    for hit in hits {
-        println!(
-            "{}\t{}\t{}\t{}",
-            hit.repo, hit.name, hit.path, hit.description
-        );
-    }
-    Ok(())
-}
+mod search;
+pub use search::{run_repo_search, RepoSearchArgs};
 
 pub fn run_repo_remove(args: RepoRemoveArgs) -> Result<()> {
     let project_root = git::ensure_git_repo()?;
@@ -352,21 +226,6 @@ fn ensure_alias_available(
         );
     }
     Ok(())
-}
-
-#[derive(Serialize)]
-struct CatalogEntry {
-    name: String,
-    description: String,
-    path: String,
-}
-
-#[derive(Serialize)]
-struct SearchHit {
-    repo: String,
-    name: String,
-    description: String,
-    path: String,
 }
 
 fn resolve_target_spec(
