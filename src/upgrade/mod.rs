@@ -31,6 +31,7 @@ pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
     let UpgradePlanResult {
         tasks: plan,
         skipped: skipped_modified,
+        refreshes,
     } = build_upgrade_plan(&targets, &install_root, upgrading_all)?;
 
     if args.dry_run {
@@ -44,22 +45,40 @@ pub fn run_upgrade(args: UpgradeArgs) -> Result<()> {
                 );
             }
         }
+        for refresh in &refreshes {
+            println!(
+                "{}: refresh lock to {} without rewiring files",
+                refresh.install_name,
+                &refresh.new_commit[..7]
+            );
+        }
         if upgrading_all {
             print_skipped(&skipped_modified);
         }
         return Ok(());
     }
 
-    if plan.is_empty() {
+    if plan.is_empty() && refreshes.is_empty() {
         if upgrading_all {
             print_skipped(&skipped_modified);
         }
         return Ok(());
     }
 
-    let staging = TempDir::new_in(&project_root).context("create staging dir")?;
-    let staged = stage_upgrades(staging.path(), &plan)?;
-    let updates = apply_staged_upgrades(&staged)?;
+    let mut updates = Vec::new();
+    if !plan.is_empty() {
+        let staging = TempDir::new_in(&project_root).context("create staging dir")?;
+        let staged = stage_upgrades(staging.path(), &plan)?;
+        updates = apply_staged_upgrades(&staged)?;
+    }
+
+    updates.extend(refreshes.iter().map(|refresh| {
+        (
+            refresh.install_name.clone(),
+            refresh.new_commit.clone(),
+            refresh.new_digest.clone(),
+        )
+    }));
     lock::edit_lockfile(&lock_path, |lf| {
         apply_updates_to_lockfile(lf, &updates)?;
         Ok(())

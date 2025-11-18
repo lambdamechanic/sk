@@ -1,7 +1,9 @@
 use super::UpgradeArgs;
-use crate::{digest, git, lock, paths};
-use anyhow::{bail, Result};
+use crate::{digest, git, install, lock, paths};
+use anyhow::{bail, Context, Result};
 use std::path::Path;
+use std::process::Command;
+use tempfile::tempdir;
 
 #[derive(Clone)]
 pub struct UpgradeTask {
@@ -15,6 +17,11 @@ pub struct UpgradeTask {
 pub struct StagedUpgrade {
     pub task: UpgradeTask,
     pub staged_path: std::path::PathBuf,
+    pub new_digest: String,
+}
+pub struct RefreshTarget {
+    pub install_name: String,
+    pub new_commit: String,
     pub new_digest: String,
 }
 
@@ -33,6 +40,7 @@ pub struct SkippedUpgrade {
 pub struct UpgradePlanResult {
     pub tasks: Vec<UpgradeTask>,
     pub skipped: Vec<SkippedUpgrade>,
+    pub refreshes: Vec<RefreshTarget>,
 }
 
 pub fn resolve_targets(lf: &lock::Lockfile, args: &UpgradeArgs) -> Result<Vec<lock::LockSkill>> {
@@ -59,6 +67,7 @@ pub fn build_upgrade_plan(
 ) -> Result<UpgradePlanResult> {
     let mut plan = Vec::new();
     let mut skipped = Vec::new();
+    let mut refreshes = Vec::new();
     for skill in targets {
         let dest = install_root.join(&skill.install_name);
         if !dest.exists() {
@@ -81,6 +90,25 @@ pub fn build_upgrade_plan(
         let needs_upgrade = new_commit != skill.commit;
 
         if is_modified {
+            let zero_diff_digest = if needs_upgrade {
+                detect_zero_diff(
+                    &dest,
+                    &cache_dir,
+                    skill.source.skill_path(),
+                    &new_commit,
+                    cur_digest.as_deref(),
+                )?
+            } else {
+                None
+            };
+            if let Some(new_digest) = zero_diff_digest {
+                refreshes.push(RefreshTarget {
+                    install_name: skill.install_name.clone(),
+                    new_commit: new_commit.clone(),
+                    new_digest,
+                });
+                continue;
+            }
             if allow_skip_dirty {
                 let span = needs_upgrade.then(|| UpgradeSpan {
                     current: skill.commit.clone(),
@@ -111,5 +139,58 @@ pub fn build_upgrade_plan(
     Ok(UpgradePlanResult {
         tasks: plan,
         skipped,
+        refreshes,
     })
+}
+
+fn detect_zero_diff(
+    dest: &Path,
+    cache_dir: &Path,
+    skill_path: &str,
+    new_commit: &str,
+    current_digest: Option<&str>,
+) -> Result<Option<String>> {
+    let checkout = tempdir().context("create temporary directory for refresh comparison")?;
+    install::extract_subdir_from_commit(cache_dir, new_commit, skill_path, checkout.path())
+        .with_context(|| {
+            format!(
+                "extracting '{}' from {}",
+                skill_path,
+                &new_commit[..7]
+            )
+        })?;
+    let output = Command::new("git")
+        .arg("--no-pager")
+        .arg("-c")
+        .arg("core.autocrlf=false")
+        .arg("diff")
+        .arg("--no-index")
+        .arg("--src-prefix=local/")
+        .arg("--dst-prefix=remote/")
+        .arg("--")
+        .arg(dest)
+        .arg(checkout.path())
+        .output()
+        .context("git diff --no-index failed to run")?;
+    let no_diff = match output.status.code() {
+        Some(0) => true,
+        Some(1) => {
+            let text = String::from_utf8_lossy(&output.stdout);
+            text.trim().is_empty()
+        }
+        Some(code) => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            bail!("git diff exited with status {code}: {stderr}")
+        }
+        None => bail!("git diff terminated by signal"),
+    };
+    if !no_diff {
+        return Ok(None);
+    }
+    let new_digest = if let Some(hash) = current_digest {
+        hash.to_string()
+    } else {
+        digest::digest_dir(checkout.path())?
+    };
+    Ok(Some(new_digest))
 }
