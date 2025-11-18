@@ -106,3 +106,10 @@ drivers = [
 
 [[plugin]]
 name = "trufflehog"
+
+[[triage]]
+  [triage.match]
+  plugins = ["ripgrep"]
+  rules   = ["ripgrep:NOTE"]
+  [triage.set]
+  ignored = true
