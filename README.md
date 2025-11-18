@@ -36,7 +36,7 @@ anthropic   github.com/anthropics/skills        120     3
 ```bash
 sk install @anthropics/skills template-skill --alias template
 sk install @anthropics/skills frontend-design
-sk install @anthropics/skills artifacts-builder
+sk install @anthropics/skills testing
 sk list
 ```
 

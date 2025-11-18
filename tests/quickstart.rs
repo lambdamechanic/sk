@@ -40,14 +40,14 @@ fn quickstart_readme_flow() {
         "template",
     ]);
     run(&["install", "@anthropics/skills", "frontend-design"]);
-    run(&["install", "@anthropics/skills", "artifacts-builder"]);
+    run(&["install", "@anthropics/skills", "testing"]);
     run(&["list"]);
     run(&[
         "doctor",
         "--status",
         "template",
         "frontend-design",
-        "artifacts-builder",
+        "testing",
     ]);
 
     // Detect local edits with doctor.
