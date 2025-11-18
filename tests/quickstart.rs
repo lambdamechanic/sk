@@ -3,6 +3,7 @@ use std::{env, fs};
 #[path = "support/mod.rs"]
 mod support;
 
+use shell_words::split as shell_split;
 use support::{CliFixture, FakeGh};
 
 #[test]
@@ -26,29 +27,10 @@ fn quickstart_readme_flow() {
             String::from_utf8_lossy(&out.stderr)
         );
     };
-
-    // Quickstart: init + config
-    run(&["init"]);
-    run(&["config", "set", "default_root", "./skills"]);
-    run(&["config", "set", "protocol", "https"]);
-
-    run(&[
-        "install",
-        "@anthropics/skills",
-        "template-skill",
-        "--alias",
-        "template",
-    ]);
-    run(&["install", "@anthropics/skills", "brand-guidelines"]);
-    run(&["install", "@anthropics/skills", "canvas-design"]);
-    run(&["list"]);
-    run(&[
-        "doctor",
-        "--status",
-        "template",
-        "brand-guidelines",
-        "canvas-design",
-    ]);
+    for args in quickstart_commands() {
+        let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        run(&arg_refs);
+    }
 
     // Detect local edits with doctor.
     let frontend_notes = fx.skill_dir("brand-guidelines").join("LOCAL_NOTES.md");
@@ -83,4 +65,41 @@ fn quickstart_readme_flow() {
             .any(|entry| entry["installName"] == "retro-template"),
         "retro-template should be tracked in skills.lock.json"
     );
+}
+
+fn quickstart_commands() -> Vec<Vec<String>> {
+    let content =
+        fs::read_to_string("README.md").expect("README must exist for quickstart extraction");
+    let start_marker = "<!-- QUICKSTART COMMANDS START -->";
+    let end_marker = "<!-- QUICKSTART COMMANDS END -->";
+    let start = content
+        .find(start_marker)
+        .expect("README missing quickstart start marker");
+    let end = content
+        .find(end_marker)
+        .expect("README missing quickstart end marker");
+    let section = &content[start + start_marker.len()..end];
+    let snippet_start = section
+        .find("```bash")
+        .expect("quickstart section must use ```bash")
+        + "```bash".len();
+    let snippet_end = section[snippet_start..]
+        .find("```")
+        .expect("quickstart section must close code block")
+        + snippet_start;
+    let snippet = &section[snippet_start..snippet_end];
+
+    snippet
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                return None;
+            }
+            Some(
+                shell_split(trimmed)
+                    .unwrap_or_else(|err| panic!("parse quickstart command `{}`: {err}", trimmed)),
+            )
+        })
+        .collect()
 }

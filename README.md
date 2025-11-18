@@ -73,6 +73,7 @@ assert_eq!(1 + 1, 2);
 Implementation notes, machine-readable catalog output, cache layouts, building from source, and the full command cheat sheet now live in `GORYDETAILS.md`.
 
 ### 8. Keep caches fresh and roll forward clean installs
+<!-- QUICKSTART COMMANDS START -->
 ```bash
 sk update                    # fetch every repo referenced in the lockfile (cache-only)
 sk doctor --diff             # compare local installs against the cached remote tip
@@ -81,6 +82,7 @@ sk upgrade --dry-run         # show old -> new commits without touching the repo
 sk upgrade --all             # apply upgrades for every clean (unmodified) skill
 sk remove <name>             # refuses if modified unless you pass --force
 ```
+<!-- QUICKSTART COMMANDS END -->
 `sk upgrade --all` skips modified installs and prints the commit span so you can decide whether to `sync-back` or revert.
 
 ### 9. Guard CI with `sk precommit`

@@ -37,3 +37,4 @@ default = []
 proptest = "1"
 assert_cmd = "2"
 predicates = "3"
+shell-words = "1"
