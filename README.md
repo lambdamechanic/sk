@@ -35,8 +35,8 @@ anthropic   github.com/anthropics/skills        120     3
 ### 3. Install a few skills
 ```bash
 sk install @anthropics/skills template-skill --alias template
-sk install @anthropics/skills frontend-design
-sk install @anthropics/skills testing
+sk install @anthropics/skills brand-guidelines
+sk install @anthropics/skills canvas-design
 sk list
 ```
 

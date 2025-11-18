@@ -39,15 +39,15 @@ fn quickstart_readme_flow() {
         "--alias",
         "template",
     ]);
-    run(&["install", "@anthropics/skills", "frontend-design"]);
-    run(&["install", "@anthropics/skills", "testing"]);
+    run(&["install", "@anthropics/skills", "brand-guidelines"]);
+    run(&["install", "@anthropics/skills", "canvas-design"]);
     run(&["list"]);
     run(&[
         "doctor",
         "--status",
         "template",
-        "frontend-design",
-        "testing",
+        "brand-guidelines",
+        "canvas-design",
     ]);
 
     // Detect local edits with doctor.
