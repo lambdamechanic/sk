@@ -54,13 +54,13 @@ sk template create retro-template "Retro two-column recap template"
 ### 6. Inspect and publish changes
 ```bash
 sk doctor
-sk sync-back frontend-design -m "Revise guidance tone"
+sk sync-back brand-guidelines -m "Revise guidance tone"
 ```
-`sk sync-back` looks up the push target from `sk config get default_repo`, mirrors `skills/frontend-design` into a temporary branch named `sk/sync/frontend-design/<timestamp>`, and opens a PR automatically unless you override the repo/path flags yourself.
+`sk sync-back` looks up the push target from `sk config get default_repo`, mirrors `skills/brand-guidelines` into a temporary branch named `sk/sync/brand-guidelines/<timestamp>`, and opens a PR automatically unless you override the repo/path flags yourself.
 
 ### 7. Stay up to date
 ```bash
-sk upgrade frontend-design
+sk upgrade brand-guidelines
 ```
 Use `sk upgrade --all` when you want every installed skill to follow its upstream tip.
 
@@ -76,7 +76,7 @@ Implementation notes, machine-readable catalog output, cache layouts, building f
 ```bash
 sk update                    # fetch every repo referenced in the lockfile (cache-only)
 sk doctor --diff             # compare local installs against the cached remote tip
-sk doctor --diff frontend-design  # limit the diff to just the named installs
+sk doctor --diff brand-guidelines  # limit the diff to just the named installs
 sk upgrade --dry-run         # show old -> new commits without touching the repo
 sk upgrade --all             # apply upgrades for every clean (unmodified) skill
 sk remove <name>             # refuses if modified unless you pass --force

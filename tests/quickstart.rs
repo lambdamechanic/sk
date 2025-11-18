@@ -51,7 +51,7 @@ fn quickstart_readme_flow() {
     ]);
 
     // Detect local edits with doctor.
-    let frontend_notes = fx.skill_dir("frontend-design").join("LOCAL_NOTES.md");
+    let frontend_notes = fx.skill_dir("brand-guidelines").join("LOCAL_NOTES.md");
     fs::write(&frontend_notes, "Modified locally\n").unwrap();
     run(&["doctor"]);
 
