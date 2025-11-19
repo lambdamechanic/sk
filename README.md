@@ -55,9 +55,9 @@ sk template create retro-template "Retro two-column recap template"
 ### 6. Inspect and publish changes
 ```bash
 sk doctor
-sk sync-back brand-guidelines -m "Revise guidance tone"
+sk sync-back brand-guidelines --message "Revise guidance tone"
 ```
-`sk sync-back` looks up the push target from `sk config get default_repo`, mirrors `skills/brand-guidelines` into a temporary branch named `sk/sync/brand-guidelines/<timestamp>`, and opens a PR automatically unless you override the repo/path flags yourself.
+`sk sync-back` looks up the push target from `sk config get default_repo`, mirrors `skills/brand-guidelines` into a temporary branch named `sk/sync/brand-guidelines/<timestamp>`, and opens a PR automatically unless you override the repo/path flags yourself. Pass `--message` (or `--message-file`) to control the PR body; omit it to re-use the default summary.
 
 ### 7. Stay up to date
 ```bash
@@ -74,7 +74,7 @@ Implementation notes, machine-readable catalog output, cache layouts, building f
 sk update                    # fetch every repo referenced in the lockfile (cache-only)
 sk doctor --diff             # compare local installs against the cached remote tip
 sk doctor --diff brand-guidelines  # limit the diff to just the named installs
-sk upgrade --dry-run         # show old -> new commits without touching the repo
+sk upgrade brand-guidelines --dry-run  # show old -> new commits without touching the repo
 sk upgrade --all             # apply upgrades for every clean (unmodified) skill
 sk remove <name>             # refuses if modified unless you pass --force
 ```
