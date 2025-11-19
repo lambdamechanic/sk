@@ -5,6 +5,10 @@ mod support;
 
 use support::{CliFixture, FakeGh};
 
+#[cfg_attr(
+    target_os = "windows",
+    ignore = "quickstart flow requires bash/cram on unix shells"
+)]
 #[test]
 fn quickstart_readme_flow() {
     if env::var_os("CI").is_none() {
@@ -181,8 +185,7 @@ fn run_quickstart_with_cram(fx: &CliFixture, gh: &FakeGh, commands: &[String], d
     cmd.arg("-m")
         .arg("cram")
         .arg("-E")
-        .arg("--shell")
-        .arg(default_cram_shell())
+        .arg("--shell=/bin/bash")
         .arg(script_path.file_name().unwrap());
     cmd.current_dir(&fx.project);
 
@@ -265,15 +268,4 @@ fn ensure_cram_site() -> PathBuf {
         "failed to install cram via pip (run `python3 -m pip install cram`)."
     );
     dir
-}
-
-fn default_cram_shell() -> String {
-    if let Ok(value) = env::var("SK_CRAM_SHELL") {
-        return value;
-    }
-    if cfg!(windows) {
-        "C:/Program Files/Git/bin/bash.exe".into()
-    } else {
-        "/bin/bash".into()
-    }
 }
