@@ -9,6 +9,7 @@
 
 ## Quickstart: install → cache Anthropic → publish your own
 
+<!-- QUICKSTART COMMANDS START -->
 ### 0. Install `sk`
 ```bash
 cargo install sk
