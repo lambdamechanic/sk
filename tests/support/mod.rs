@@ -80,6 +80,8 @@ pub fn extract_subdir_from_commit(cache: &Path, commit: &str, subdir: &str, dest
         .args([
             "-C",
             cache.to_str().unwrap(),
+            "-c",
+            "core.autocrlf=false",
             "archive",
             "--format=tar",
             commit,
