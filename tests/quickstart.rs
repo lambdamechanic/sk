@@ -181,7 +181,8 @@ fn run_quickstart_with_cram(fx: &CliFixture, gh: &FakeGh, commands: &[String], d
     cmd.arg("-m")
         .arg("cram")
         .arg("-E")
-        .arg("--shell=/bin/bash")
+        .arg("--shell")
+        .arg(default_cram_shell())
         .arg(script_path.file_name().unwrap());
     cmd.current_dir(&fx.project);
 
@@ -264,4 +265,15 @@ fn ensure_cram_site() -> PathBuf {
         "failed to install cram via pip (run `python3 -m pip install cram`)."
     );
     dir
+}
+
+fn default_cram_shell() -> String {
+    if let Ok(value) = env::var("SK_CRAM_SHELL") {
+        return value;
+    }
+    if cfg!(windows) {
+        "bash".into()
+    } else {
+        "/bin/bash".into()
+    }
 }
