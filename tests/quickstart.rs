@@ -78,11 +78,8 @@ fn quickstart_commands() -> Vec<String> {
     let mut commands = Vec::new();
     let mut remainder = section;
     let fence = "```bash";
-    loop {
-        let fence_start = match remainder.find(fence) {
-            Some(idx) => idx + fence.len(),
-            None => break,
-        };
+    while let Some(idx) = remainder.find(fence) {
+        let fence_start = idx + fence.len();
         let after_fence = &remainder[fence_start..];
         let fence_end = after_fence
             .find("```")
