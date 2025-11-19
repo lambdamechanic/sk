@@ -9,6 +9,7 @@
 
 ## Quickstart: install → cache Anthropic → publish your own
 
+<!-- QUICKSTART COMMANDS START -->
 ### 0. Install `sk`
 ```bash
 cargo install sk
@@ -26,7 +27,7 @@ sk repo add @anthropics/skills --alias anthropic
 sk repo list
 ```
 Example `sk repo list` output:
-```
+```text
 ALIAS       REPO                                SKILLS  INSTALLED
 anthropic   github.com/anthropics/skills        120     3
 ```
@@ -35,8 +36,8 @@ anthropic   github.com/anthropics/skills        120     3
 ### 3. Install a few skills
 ```bash
 sk install @anthropics/skills template-skill --alias template
-sk install @anthropics/skills frontend-design
-sk install @anthropics/skills artifacts-builder
+sk install @anthropics/skills brand-guidelines
+sk install @anthropics/skills canvas-design
 sk list
 ```
 
@@ -54,13 +55,13 @@ sk template create retro-template "Retro two-column recap template"
 ### 6. Inspect and publish changes
 ```bash
 sk doctor
-sk sync-back frontend-design -m "Revise guidance tone"
+sk sync-back brand-guidelines --message "Revise guidance tone"
 ```
-`sk sync-back` looks up the push target from `sk config get default_repo`, mirrors `skills/frontend-design` into a temporary branch named `sk/sync/frontend-design/<timestamp>`, and opens a PR automatically unless you override the repo/path flags yourself.
+`sk sync-back` looks up the push target from `sk config get default_repo`, mirrors `skills/brand-guidelines` into a temporary branch named `sk/sync/brand-guidelines/<timestamp>`, and opens a PR automatically unless you override the repo/path flags yourself. Pass `--message` (or `--message-file`) to control the PR body; omit it to re-use the default summary.
 
 ### 7. Stay up to date
 ```bash
-sk upgrade frontend-design
+sk upgrade brand-guidelines
 ```
 Use `sk upgrade --all` when you want every installed skill to follow its upstream tip.
 
@@ -68,14 +69,16 @@ Use `sk upgrade --all` when you want every installed skill to follow its upstrea
 Implementation notes, machine-readable catalog output, cache layouts, building from source, and the full command cheat sheet now live in `GORYDETAILS.md`.
 
 ### 8. Keep caches fresh and roll forward clean installs
+<!-- QUICKSTART COMMANDS START -->
 ```bash
 sk update                    # fetch every repo referenced in the lockfile (cache-only)
 sk doctor --diff             # compare local installs against the cached remote tip
-sk doctor --diff frontend-design  # limit the diff to just the named installs
-sk upgrade --dry-run         # show old -> new commits without touching the repo
+sk doctor --diff brand-guidelines  # limit the diff to just the named installs
+sk upgrade brand-guidelines --dry-run  # show old -> new commits without touching the repo
 sk upgrade --all             # apply upgrades for every clean (unmodified) skill
 sk remove <name>             # refuses if modified unless you pass --force
 ```
+<!-- QUICKSTART COMMANDS END -->
 `sk upgrade --all` skips modified installs and prints the commit span so you can decide whether to `sync-back` or revert.
 
 ### 9. Guard CI with `sk precommit`

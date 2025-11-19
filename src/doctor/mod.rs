@@ -1,4 +1,5 @@
 mod cache;
+mod diagnose;
 mod manifest;
 mod report;
 mod runner;

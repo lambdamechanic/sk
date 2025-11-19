@@ -154,6 +154,80 @@ fn upgrade_fetches_cache_and_applies_without_update() {
 }
 
 #[test]
+fn upgrade_refreshes_lock_when_local_matches_remote() {
+    let tmp = tempdir().unwrap();
+    let root = tmp.path();
+    let cache_root = root.join("cache");
+    let remotes_root = root.join("remotes_root");
+    let project = root.join("project");
+    fs::create_dir_all(&project).unwrap();
+    git(&["init", "-b", "main"], &project);
+
+    let host = "local";
+    let owner = "o";
+    let repo = "r1";
+    let skill_path = "skill-0";
+    let (bare, v1, v2) = init_skill_repo(&remotes_root, repo, skill_path);
+    let file_url = path_to_file_url(&bare);
+    let cache = clone_into_cache(
+        &cache_root,
+        CacheRepoSpec {
+            host,
+            owner,
+            name: repo,
+            url_for_lock: &file_url,
+        },
+        &bare,
+    );
+
+    let dest = project.join("skills").join("s0");
+    extract_subdir_from_commit(&cache, &v1, skill_path, &dest);
+    let digest_v1 = digest_dir(&dest);
+    let lock = serde_json::json!({
+        "version":1,
+        "skills":[{
+            "installName":"s0",
+            "source": {"url":file_url,"host":host,"owner":owner,"repo":repo,"skillPath":skill_path},
+            "commit": v1,
+            "digest": digest_v1,
+            "installedAt":"1970-01-01T00:00:00Z"
+        }],
+        "generatedAt":"1970-01-01T00:00:00Z"
+    });
+    write(
+        &project.join("skills.lock.json"),
+        &serde_json::to_string_pretty(&lock).unwrap(),
+    );
+
+    fs::remove_dir_all(&dest).unwrap();
+    extract_subdir_from_commit(&cache, &v2, skill_path, &dest);
+    let digest_v2 = digest_dir(&dest);
+
+    let mut cmd = cargo_bin_cmd!("sk");
+    let out = cmd
+        .current_dir(&project)
+        .env("SK_CACHE_DIR", cache_root.to_str().unwrap())
+        .args(["upgrade", "s0"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "upgrade failed: {out:?}");
+
+    let new_lock: Json =
+        serde_json::from_str(&fs::read_to_string(project.join("skills.lock.json")).unwrap())
+            .unwrap();
+    let new_commit = new_lock["skills"][0]["commit"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(new_commit, v2);
+    let new_digest = new_lock["skills"][0]["digest"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(new_digest, digest_v2);
+}
+
+#[test]
 fn upgrade_handles_cross_device_rename_simulation() {
     let tmp = tempdir().unwrap();
     let root = tmp.path();

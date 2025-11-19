@@ -80,6 +80,8 @@ pub fn extract_subdir_from_commit(cache: &Path, commit: &str, subdir: &str, dest
         .args([
             "-C",
             cache.to_str().unwrap(),
+            "-c",
+            "core.autocrlf=false",
             "archive",
             "--format=tar",
             commit,
@@ -271,6 +273,10 @@ impl CliFixture {
         &self.cache_base
     }
 
+    pub fn config_dir(&self) -> &Path {
+        &self.config_dir
+    }
+
     pub fn sk_success(&self, args: &[&str]) {
         let out = self.sk_cmd().args(args).output().unwrap();
         assert!(
@@ -403,6 +409,14 @@ impl FakeGh {
         let joined = env::join_paths(combined_paths).expect("join PATH entries");
         cmd.env("PATH", joined);
         cmd.env("SK_TEST_GH_STATE_FILE", &self.state_file);
+    }
+
+    pub fn bin_dir(&self) -> &Path {
+        &self.bin_dir
+    }
+
+    pub fn state_file(&self) -> &Path {
+        &self.state_file
     }
 
     pub fn clear_state(&self) {

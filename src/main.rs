@@ -37,15 +37,39 @@ fn main() -> Result<()> {
         } => cmd_where(&installed_name, root.as_deref()),
         Commands::Check { names, root, json } => {
             warn_deprecated("check", "sk doctor --summary");
-            cmd_doctor(&names, root.as_deref(), true, false, false, json, false)
+            cmd_doctor(CmdDoctorConfig {
+                names: &names,
+                root_flag: root.as_deref(),
+                summary: true,
+                status: false,
+                diff: false,
+                json,
+                apply: false,
+            })
         }
         Commands::Status { names, root, json } => {
             warn_deprecated("status", "sk doctor --status");
-            cmd_doctor(&names, root.as_deref(), false, true, false, json, false)
+            cmd_doctor(CmdDoctorConfig {
+                names: &names,
+                root_flag: root.as_deref(),
+                summary: false,
+                status: true,
+                diff: false,
+                json,
+                apply: false,
+            })
         }
         Commands::Diff { names, root } => {
             warn_deprecated("diff", "sk doctor --diff");
-            cmd_doctor(&names, root.as_deref(), false, false, true, false, false)
+            cmd_doctor(CmdDoctorConfig {
+                names: &names,
+                root_flag: root.as_deref(),
+                summary: false,
+                status: false,
+                diff: true,
+                json: false,
+                apply: false,
+            })
         }
         Commands::Update => update::run_update(),
         Commands::Upgrade {
@@ -91,7 +115,15 @@ fn main() -> Result<()> {
             diff,
             json,
             apply,
-        } => cmd_doctor(&names, root.as_deref(), summary, status, diff, json, apply),
+        } => cmd_doctor(CmdDoctorConfig {
+            names: &names,
+            root_flag: root.as_deref(),
+            summary,
+            status,
+            diff,
+            json,
+            apply,
+        }),
         Commands::Config { cmd } => cmd_config(cmd),
         Commands::Template { cmd } => cmd_template(cmd),
         Commands::Repo { cmd } => cmd_repo(cmd),
@@ -186,43 +218,45 @@ fn warn_deprecated(cmd: &str, replacement: &str) {
     );
 }
 
-fn cmd_doctor(
-    names: &[String],
-    root_flag: Option<&str>,
+struct CmdDoctorConfig<'a> {
+    names: &'a [String],
+    root_flag: Option<&'a str>,
     summary: bool,
     status: bool,
     diff: bool,
     json: bool,
     apply: bool,
-) -> Result<()> {
-    let mode_flags = summary as u8 + status as u8 + diff as u8;
+}
+
+fn cmd_doctor(cfg: CmdDoctorConfig<'_>) -> Result<()> {
+    let mode_flags = cfg.summary as u8 + cfg.status as u8 + cfg.diff as u8;
     if mode_flags > 1 {
         bail!("Choose only one of --summary, --status, or --diff.");
     }
 
-    let mode = if summary {
+    let mode = if cfg.summary {
         DoctorMode::Summary
-    } else if status {
+    } else if cfg.status {
         DoctorMode::Status
-    } else if diff {
+    } else if cfg.diff {
         DoctorMode::Diff
     } else {
         DoctorMode::Diagnose
     };
 
-    if json && !matches!(mode, DoctorMode::Summary | DoctorMode::Status) {
+    if cfg.json && !matches!(mode, DoctorMode::Summary | DoctorMode::Status) {
         bail!("--json is only supported with --summary or --status.");
     }
-    if apply && !matches!(mode, DoctorMode::Diagnose) {
+    if cfg.apply && !matches!(mode, DoctorMode::Diagnose) {
         bail!("--apply cannot be combined with --summary/--status/--diff.");
     }
 
     doctor::run_doctor(DoctorArgs {
-        names,
-        root: root_flag,
+        names: cfg.names,
+        root: cfg.root_flag,
         mode,
-        json,
-        apply,
+        json: cfg.json,
+        apply: cfg.apply,
     })
 }
 
