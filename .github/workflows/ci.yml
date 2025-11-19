@@ -50,27 +50,28 @@ jobs:
       - name: Test
         run: cargo test --all --locked --no-fail-fast
 
-  macos:
-    name: macos - build + test (gated)
-    needs: linux
-    runs-on: macos-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Rust (stable)
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          cache-on-failure: true
-
-      - name: Build
-        run: cargo build --all --locked
-
-      - name: Test
-        run: cargo test --all --locked --no-fail-fast
+  # macos job disabled: macOS runners are too expensive right now.
+  # macos:
+  #   name: macos - build + test (gated)
+  #   needs: linux
+  #   runs-on: macos-latest
+  #   steps:
+  #     - name: Checkout
+  #       uses: actions/checkout@v4
+  #
+  #     - name: Install Rust (stable)
+  #       uses: dtolnay/rust-toolchain@stable
+  #
+  #     - name: Cache cargo
+  #       uses: Swatinem/rust-cache@v2
+  #       with:
+  #         cache-on-failure: true
+  #
+  #     - name: Build
+  #       run: cargo build --all --locked
+  #
+  #     - name: Test
+  #       run: cargo test --all --locked --no-fail-fast
 
   windows:
     name: windows - build + test (gated)
