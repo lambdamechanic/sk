@@ -2,6 +2,10 @@
 
 `sk` keeps Claude Skills vendored inside your Git repository so agents other than Claude can reuse the same directives. 
 
+## What are Claude Skills?
+
+Claude Skills are reusable sets of instructions and prompts that can be used to guide Claude's behavior and responses. They are similar to "meta-prompts" or "tool-use" protocols for other AI agents. By managing your skills in a Git repository, you can version-control them, share them with your team, and ensure that everyone is using the same version of a skill. This is especially important when working on complex tasks that require a high degree of consistency and reproducibility.
+
 ## Why sk?
 - Vendored helpers travel with your git history, so reviewers and automation see the exact bits you edited.
 - Works for any agent.

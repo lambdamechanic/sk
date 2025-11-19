@@ -17,8 +17,9 @@ mod update;
 mod upgrade;
 
 use anyhow::{bail, Context, Result};
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use owo_colors::OwoColorize;
+use std::io;
 
 use crate::cli::{Cli, Commands, ConfigCmd, RepoCmd, TemplateCmd};
 use crate::doctor::{DoctorArgs, DoctorMode};
@@ -144,6 +145,19 @@ fn main() -> Result<()> {
             root: root.as_deref(),
             https,
         }),
+        Commands::Completions { shell } => {
+            let mut cmd = Cli::command();
+            let shell = match shell.as_str() {
+                "bash" => clap_complete::Shell::Bash,
+                "zsh" => clap_complete::Shell::Zsh,
+                "fish" => clap_complete::Shell::Fish,
+                "elvish" => clap_complete::Shell::Elvish,
+                "powershell" => clap_complete::Shell::PowerShell,
+                _ => bail!("Unsupported shell: {}", shell),
+            };
+            clap_complete::generate(shell, &mut cmd, "sk", &mut io::stdout());
+            Ok(())
+        }
     }
 }
 

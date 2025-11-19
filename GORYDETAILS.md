@@ -17,12 +17,67 @@ sk repo search --repo @anthropics/skills --all --json  # machine-readable listin
 ## `sk doctor` deep dive
 `sk doctor [name...]` recalculates digests, confirms cached commits still exist, and tells you which follow-up command fixes each issue. Add `--apply` to rebuild missing installs from the cached commit, drop orphaned lock entries, and prune caches so the lockfile stays aligned with disk. When editing a new skill, run `sk doctor <name>` frequently so you know if upstream advanced while you were working.
 
+### `sk doctor` examples
+
+Here are a few examples of what you might see when you run `sk doctor`.
+
+**When a skill is modified:**
+
+```
+$ sk doctor my-skill
+[MODIFIED] my-skill
+  - SKILL.md: modified
+  - prompt.md: modified
+```
+
+**When a skill is outdated:**
+
+```
+$ sk doctor my-skill --status
+[UPGRADE] my-skill (2 commits behind)
+  - OLD: 1234567
+  - NEW: 89abcde
+```
+
+**When a skill is missing:**
+
+```
+$ sk doctor my-skill
+[MISSING] my-skill
+  - Run `sk doctor my-skill --apply` to reinstall from the lockfile.
+```
+
 ## `sk sync-back` internals
 After editing files under `skills/<name>`:
 1. The install directory is mirrored into a clean worktree of the cached repo under `~/.cache/sk/repos/...` (prefers `rsync -a --delete`, falls back to a recursive copy if `rsync` is unavailable).
 2. `sk` commits and pushes to the repo supplied via `--repo` or, when omitted, `sk config get default_repo`. The destination skill path defaults to the install name so `sk sync-back <name>` works with no extra flags once `default_repo` is set.
 3. Branches default to `sk/sync/<name>/<timestamp>`. `gh pr create` (and `gh pr merge` when auto-merge is armed) handles the review path. Missing `rsync` or `gh` triggers warnings but never aborts the publish.
 4. Upon success, `skills.lock.json` updates to the new commit and digest so teammates get the latest version immediately.
+
+### `sk sync-back` example
+
+Here's a more detailed example of the `sk sync-back` workflow.
+
+Let's say you've edited the `frontend-design` skill and you want to sync it back to the `your-gh-username/skills` repository.
+
+First, you would run `sk sync-back`:
+
+```
+$ sk sync-back frontend-design -m "Updated the design principles"
+[INFO] Syncing frontend-design to your-gh-username/skills
+[INFO] Pushing to branch sk/sync/frontend-design/1678886400
+[INFO] Creating pull request...
+[INFO] https://github.com/your-gh-username/skills/pull/123
+```
+
+This will:
+
+1.  Create a new branch in your local cache of the `your-gh-username/skills` repository.
+2.  Commit your changes to the new branch.
+3.  Push the new branch to GitHub.
+4.  Create a new pull request with the title "Sync frontend-design" and the body "Updated the design principles".
+
+You can then review and merge the pull request on GitHub.
 
 ## Installing or hacking on `sk` itself
 ```bash

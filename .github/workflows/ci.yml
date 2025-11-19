@@ -41,6 +41,9 @@ jobs:
       - name: Precommit (fmt + clippy)
         run: make precommit
 
+      - name: Check for vulnerabilities
+        run: cargo install cargo-audit && cargo audit
+
       - name: Build
         run: cargo build --all --locked
 
