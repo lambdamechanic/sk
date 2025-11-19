@@ -272,7 +272,7 @@ fn default_cram_shell() -> String {
         return value;
     }
     if cfg!(windows) {
-        "bash".into()
+        "C:/Program Files/Git/bin/bash.exe".into()
     } else {
         "/bin/bash".into()
     }
