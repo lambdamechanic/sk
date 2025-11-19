@@ -29,7 +29,7 @@ fn quickstart_readme_flow() {
     };
     for args in quickstart_commands() {
         let mut normalized: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-        if normalized.first().map(|s| *s) == Some("sk") {
+        if normalized.first().copied() == Some("sk") {
             normalized.remove(0);
         }
         run(&normalized);
