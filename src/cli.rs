@@ -163,6 +163,11 @@ pub enum Commands {
         )]
         root: Option<String>,
     },
+    #[command(about = "Generate shell completions")]
+    Completions {
+        #[arg(long, help = "The shell to generate completions for")]
+        shell: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]
