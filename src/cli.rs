@@ -163,10 +163,22 @@ pub enum Commands {
         )]
         root: Option<String>,
     },
-    #[command(about = "Generate shell completions")]
+    #[command(about = "Generate shell completions or helper data")]
     Completions {
-        #[arg(long, help = "The shell to generate completions for")]
-        shell: String,
+        #[arg(
+            long,
+            value_name = "SHELL",
+            help = "The shell to generate completions for",
+            conflicts_with = "skills"
+        )]
+        shell: Option<String>,
+        #[arg(
+            long,
+            help = "Emit newline-separated installed skill names for completion scripts",
+            hide = true,
+            conflicts_with = "shell"
+        )]
+        skills: bool,
     },
 }
 

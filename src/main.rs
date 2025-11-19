@@ -1,4 +1,5 @@
 mod cli;
+mod completions;
 mod config;
 mod digest;
 mod doctor;
@@ -19,7 +20,6 @@ mod upgrade;
 use anyhow::{bail, Context, Result};
 use clap::{CommandFactory, Parser};
 use owo_colors::OwoColorize;
-use std::io;
 
 use crate::cli::{Cli, Commands, ConfigCmd, RepoCmd, TemplateCmd};
 use crate::doctor::{DoctorArgs, DoctorMode};
@@ -145,18 +145,15 @@ fn main() -> Result<()> {
             root: root.as_deref(),
             https,
         }),
-        Commands::Completions { shell } => {
-            let mut cmd = Cli::command();
-            let shell = match shell.as_str() {
-                "bash" => clap_complete::Shell::Bash,
-                "zsh" => clap_complete::Shell::Zsh,
-                "fish" => clap_complete::Shell::Fish,
-                "elvish" => clap_complete::Shell::Elvish,
-                "powershell" => clap_complete::Shell::PowerShell,
-                _ => bail!("Unsupported shell: {}", shell),
-            };
-            clap_complete::generate(shell, &mut cmd, "sk", &mut io::stdout());
-            Ok(())
+        Commands::Completions { shell, skills } => {
+            if skills {
+                completions::emit_skill_names()
+            } else if let Some(shell) = shell {
+                let mut cmd = Cli::command();
+                completions::generate(shell.as_str(), &mut cmd)
+            } else {
+                bail!("Pass either --shell <SHELL> or --skills");
+            }
         }
     }
 }

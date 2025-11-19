@@ -189,5 +189,10 @@ That paragraph solves the “chicken-and-egg” problem: the agent reads the pol
 | `sk sync-back <name> [-m "..."]` | Push local edits (or brand-new skills) to the configured repo and auto-open a PR with `gh`. |
 | `sk precommit [--allow-local]` | Enforce no local-only sources in `skills.lock.json` before committing. |
 | `sk config get|set <key> [value]` | View or tweak defaults like install root, protocol, host, GitHub username. |
+| `sk completions --shell <shell>` | Emit bash/zsh/fish scripts that auto-complete installed skill names (they call `sk completions --skills` under the hood). |
 
 That’s it—`sk` keeps your Claude Skills reproducible, reviewable, and easy to upstream. Let us know what other workflows you need!
+
+### Dynamic shell completions
+
+`sk completions --shell bash|zsh|fish` now injects small helper functions that call `sk completions --skills` whenever you tab-complete nouns such as `sk where`, `sk remove`, `sk sync-back`, `sk doctor`, and `sk upgrade`. The helpers only ask `sk` for data—they never inspect the bd database—so completions stay repo-scoped and reproducible. Add the generated script to your shell init (`eval "$(sk completions --shell zsh)"` or similar) and you’ll see installed `installName` values (plus `--all` for `sk upgrade`). If a repo is missing or the lockfile is invalid the helper simply returns no results; set `SK_COMPLETIONS_DEBUG=1` to surface those errors while debugging your shell setup.
