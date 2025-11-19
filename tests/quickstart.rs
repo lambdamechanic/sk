@@ -28,8 +28,11 @@ fn quickstart_readme_flow() {
         );
     };
     for args in quickstart_commands() {
-        let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-        run(&arg_refs);
+        let mut normalized: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        if normalized.first().map(|s| *s) == Some("sk") {
+            normalized.remove(0);
+        }
+        run(&normalized);
     }
 
     // Detect local edits with doctor.
