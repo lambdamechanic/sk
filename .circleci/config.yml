@@ -1,0 +1,42 @@
+version: 2.1
+
+jobs:
+  build:
+    docker:
+      - image: cimg/rust:1.81
+    environment:
+      CARGO_TERM_COLOR: always
+    steps:
+      - checkout
+
+      - restore_cache:
+          keys:
+            - v1-cargo-{{ arch }}-{{ checksum "Cargo.lock" }}
+            - v1-cargo-{{ arch }}-
+
+      - run:
+          name: Install rust components
+          command: |
+            rustup component add rustfmt clippy
+
+      - run:
+          name: fmt + clippy
+          command: |
+            cargo fmt --all --check
+            cargo clippy --all-targets --all-features -- -D warnings
+
+      - run:
+          name: tests
+          command: cargo test --all --locked --no-fail-fast
+
+      - save_cache:
+          key: v1-cargo-{{ arch }}-{{ checksum "Cargo.lock" }}
+          paths:
+            - /usr/local/cargo/registry
+            - /usr/local/cargo/git
+            - target
+
+workflows:
+  build:
+    jobs:
+      - build
