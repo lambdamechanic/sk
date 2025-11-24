@@ -28,6 +28,12 @@ jobs:
             - cargo-cache-{{ checksum "Cargo.lock" }}
             - cargo-cache-
       - run:
+          name: Install Python deps for cram tests
+          command: |
+            python3 -m ensurepip --upgrade || true
+            python3 -m pip install --upgrade pip
+            python3 -m pip install cram
+      - run:
           name: Fetch dependencies
           command: cargo fetch
       - run:
