@@ -1,42 +1,67 @@
 version: 2.1
 
-jobs:
-  build:
+executors:
+  rust:
     docker:
-      - image: cimg/rust:1.91.1
-    environment:
-      CARGO_TERM_COLOR: always
+      - image: cimg/rust:1.82
+    working_directory: ~/project
+
+commands:
+  cargo-cache-keys:
+    parameters:
+      path:
+        type: string
+    steps:
+      - save_cache:
+          key: cargo-cache-<< parameters.path >>-{{ checksum "Cargo.lock" }}
+          paths:
+            - ~/.cargo/registry
+            - ~/.cargo/git
+
+jobs:
+  build-test:
+    executor: rust
     steps:
       - checkout
-
       - restore_cache:
           keys:
-            - v1-cargo-{{ arch }}-{{ checksum "Cargo.lock" }}
-            - v1-cargo-{{ arch }}-
-
+            - cargo-cache-{{ checksum "Cargo.lock" }}
+            - cargo-cache-
       - run:
-          name: Install rust components
+          name: Install Python deps for cram tests
           command: |
-            rustup component add rustfmt clippy
-
+            sudo apt-get update
+            sudo apt-get install -y python3-venv
+            # Prefer ensurepip (option 2). If unavailable, fall back to distro pip (option 1).
+            python3 -m ensurepip --upgrade || sudo apt-get install -y python3-pip
+            python3 -m pip install --upgrade pip
+            python3 -m pip install cram
       - run:
-          name: fmt + clippy
+          name: Fetch dependencies
+          command: cargo fetch --locked
+      - run:
+          name: Format check
+          command: cargo fmt -- --check
+      - run:
+          name: Clippy
+          command: cargo clippy --locked --all-targets --all-features -- -D warnings
+      - run:
+          name: Trust github.com host key for git+ssh in tests
           command: |
-            cargo fmt --all --check
-            cargo clippy --all-targets --all-features -- -D warnings
-
+            mkdir -p ~/.ssh
+            ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts
+            chmod 700 ~/.ssh
       - run:
-          name: tests
-          command: cargo test --all --locked --no-fail-fast
-
+          name: Tests
+          command: cargo test --locked --all --all-features
       - save_cache:
-          key: v1-cargo-{{ arch }}-{{ checksum "Cargo.lock" }}
+          key: cargo-cache-{{ checksum "Cargo.lock" }}
           paths:
-            - /usr/local/cargo/registry
-            - /usr/local/cargo/git
-            - target
+            - ~/.cargo/registry
+            - ~/.cargo/git
 
 workflows:
-  build:
+  version: 2
+  ci:
     jobs:
-      - build
+      - build-test
