@@ -30,7 +30,10 @@ jobs:
       - run:
           name: Install Python deps for cram tests
           command: |
-            python3 -m ensurepip --upgrade || true
+            sudo apt-get update
+            sudo apt-get install -y python3-venv
+            # Prefer ensurepip (option 2). If unavailable, fall back to distro pip (option 1).
+            python3 -m ensurepip --upgrade || sudo apt-get install -y python3-pip
             python3 -m pip install --upgrade pip
             python3 -m pip install cram
       - run:
