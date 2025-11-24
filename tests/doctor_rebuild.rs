@@ -49,7 +49,7 @@ fn doctor_skips_upgrade_when_only_other_paths_change() {
     git(&["commit", "-m", "outside change"], &remote.work);
     git(&["push", "origin", "main"], &remote.work);
 
-    fx.sk_success(&["update"]);
+    fx.sk_success(&["cache", "refresh"]);
 
     let mut cmd = fx.sk_cmd();
     let out = cmd.args(["doctor"]).output().unwrap();
@@ -74,7 +74,7 @@ fn doctor_reports_upgrade_when_skill_path_changes() {
     fx.install_from_remote(&remote, "demo");
 
     remote.overwrite_file("file.txt", "v2\n", "touch skill contents");
-    fx.sk_success(&["update"]);
+    fx.sk_success(&["cache", "refresh"]);
 
     let mut cmd = fx.sk_cmd();
     let out = cmd.args(["doctor"]).output().unwrap();

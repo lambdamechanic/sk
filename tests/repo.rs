@@ -115,7 +115,7 @@ fn repo_search_without_query_lists_all_repos() {
 }
 
 #[test]
-fn repo_catalog_alias_warns_and_lists() {
+fn repo_search_all_lists_repo_skills() {
     let fx = CliFixture::new();
     fx.sk_success(&["init"]);
     let remote = fx.create_remote("alias-catalog", ".", "alias-skill");
@@ -124,20 +124,19 @@ fn repo_catalog_alias_warns_and_lists() {
 
     let out = fx
         .sk_cmd()
-        .args(["repo", "catalog", "alias", "--json"])
+        .args(["repo", "search", "--repo", "alias", "--all", "--json"])
         .output()
         .unwrap();
     assert!(
         out.status.success(),
-        "repo catalog alias failed: {}",
+        "repo search --repo alias --all failed: {}",
         String::from_utf8_lossy(&out.stderr)
     );
     let entries: Value = serde_json::from_slice(&out.stdout).expect("catalog json");
     assert_eq!(entries[0]["name"], "alias-skill");
-    let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
-        stderr.contains("repo catalog") && stderr.contains("repo search"),
-        "expected deprecation warning mentioning repo search: {stderr}"
+        String::from_utf8_lossy(&out.stderr).trim().is_empty(),
+        "repo search should not emit deprecation warnings now"
     );
 }
 
