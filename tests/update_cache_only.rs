@@ -57,15 +57,15 @@ fn init_bare_and_work_with_v1(
     (bare, work, v1)
 }
 
-fn run_update(project: &Path, cache_root: &Path) {
+fn run_cache_refresh(project: &Path, cache_root: &Path) {
     let mut cmd = cargo_bin_cmd!("sk");
     let out = cmd
         .current_dir(project)
         .env("SK_CACHE_DIR", cache_root.to_str().unwrap())
-        .args(["update"])
+        .args(["cache", "refresh"])
         .output()
         .unwrap();
-    assert!(out.status.success(), "sk update failed: {out:?}");
+    assert!(out.status.success(), "sk cache refresh failed: {out:?}");
 }
 
 fn origin_head(cache_repo: &Path) -> String {
@@ -161,8 +161,8 @@ fn update_is_cache_only_and_fetches() {
     fs::write(&lock_path, serde_json::to_string_pretty(&lock).unwrap()).unwrap();
     let before = fs::read_to_string(&lock_path).unwrap();
 
-    // Run update; it should only touch cache, not the project
-    run_update(&project, &cache_root);
+    // Run cache refresh; it should only touch cache, not the project
+    run_cache_refresh(&project, &cache_root);
 
     // Project lockfile unchanged
     let after = fs::read_to_string(&lock_path).unwrap();
@@ -224,7 +224,7 @@ fn update_refreshes_default_branch_head() {
     )
     .unwrap();
 
-    run_update(&project, &cache_root);
+    run_cache_refresh(&project, &cache_root);
 
     let cache_repo = cache_repo_path(&cache_root, "local", "o", "rhead", &url);
     assert!(
@@ -242,7 +242,63 @@ fn update_refreshes_default_branch_head() {
     git(&["push", "origin", "trunk"], &work);
     git(&["symbolic-ref", "HEAD", "refs/heads/trunk"], &bare);
 
-    run_update(&project, &cache_root);
+    run_cache_refresh(&project, &cache_root);
 
     assert_eq!(origin_head(&cache_repo), "trunk");
+}
+
+#[test]
+fn cache_refresh_clones_missing_cache_once() {
+    let root = tempdir().unwrap();
+    let root = root.path();
+
+    // remote with a single commit
+    let (bare, _work, head) = init_bare_and_work_with_v1(root, "missing-cache", "skill");
+
+    // project referencing the remote
+    let project = root.join("project-missing-cache");
+    fs::create_dir_all(&project).unwrap();
+    git(&["init", "-b", "main"], &project);
+
+    let cache_root = root.join("cache-missing");
+    let url = path_to_file_url(&bare);
+    let lock = json!({
+        "version": 1,
+        "skills": [
+            {
+                "installName": "missing",
+                "source": {
+                    "url": url,
+                    "host": "local",
+                    "owner": "o",
+                    "repo": "missing",
+                    "skillPath": "skill"
+                },
+                "commit": head,
+                "digest": "sha256:1",
+                "installedAt": "1970-01-01T00:00:00Z"
+            }
+        ],
+        "generatedAt": "1970-01-01T00:00:00Z"
+    });
+    fs::write(
+        project.join("skills.lock.json"),
+        serde_json::to_string_pretty(&lock).unwrap(),
+    )
+    .unwrap();
+
+    // No cache exists yet, so refresh should clone once and fetch
+    run_cache_refresh(&project, &cache_root);
+
+    let cache_repo = cache_repo_path(&cache_root, "local", "o", "missing", &url);
+    assert!(cache_repo.exists(), "cache clone should be created");
+    let cached_head = String::from_utf8(
+        Command::new("git")
+            .args(["-C", cache_repo.to_str().unwrap(), "rev-parse", "HEAD"])
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .unwrap();
+    assert_eq!(cached_head.trim(), head);
 }

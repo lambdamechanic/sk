@@ -34,23 +34,15 @@ pub enum Commands {
     Where {
         installed_name: String,
     },
-    #[command(hide = true, about = "DEPRECATED: use `sk doctor --summary` instead")]
-    Check {
-        names: Vec<String>,
-        #[arg(long)]
-        json: bool,
+    #[command(
+        about = "Cache operations",
+        subcommand_required = true,
+        arg_required_else_help = true
+    )]
+    Cache {
+        #[command(subcommand)]
+        cmd: CacheCmd,
     },
-    #[command(hide = true, about = "DEPRECATED: use `sk doctor --status` instead")]
-    Status {
-        names: Vec<String>,
-        #[arg(long)]
-        json: bool,
-    },
-    #[command(about = "Show diffs between local skills and their remote repos")]
-    Diff {
-        names: Vec<String>,
-    },
-    Update,
     Upgrade {
         #[arg(allow_hyphen_values = true)]
         target: String, // installed-name or --all
@@ -155,6 +147,12 @@ pub enum Commands {
 }
 
 #[derive(Subcommand, Debug)]
+pub enum CacheCmd {
+    #[command(about = "Refresh cached repos referenced by the lockfile (cache-only)")]
+    Refresh,
+}
+
+#[derive(Subcommand, Debug)]
 pub enum ConfigCmd {
     Get { key: String },
     Set { key: String, value: String },
@@ -182,17 +180,6 @@ pub enum RepoCmd {
     },
     #[command(about = "List cached repos")]
     List {
-        #[arg(long)]
-        json: bool,
-    },
-    #[command(
-        hide = true,
-        about = "DEPRECATED: use `sk repo search --repo <alias-or-repo> --all` instead"
-    )]
-    Catalog {
-        target: String,
-        #[arg(long, help = "Use HTTPS when resolving @owner/repo shorthand")]
-        https: bool,
         #[arg(long)]
         json: bool,
     },

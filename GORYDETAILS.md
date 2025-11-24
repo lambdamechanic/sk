@@ -9,7 +9,7 @@ sk repo search --repo anthropic           # human-readable listing (replaces `re
 sk repo search "retro"                    # search across every cached repo
 sk repo search --repo @anthropics/skills --all --json  # machine-readable listing for tooling
 ```
-`sk update` refreshes every cached repo. All catalog files live under `~/.cache/sk/repos/<host>/<owner>/<repo>` unless you override `SK_CACHE_DIR`.
+`sk cache refresh` refreshes every cached repo. All catalog files live under `~/.cache/sk/repos/<host>/<owner>/<repo>` unless you override `SK_CACHE_DIR`. Run it once per CI job (or before `sk doctor --diff` / `sk upgrade`) so downstream commands compare against the latest remote tip; it deduplicates repos so each cache is fetched at most once per invocation.
 
 ## Template behavior
 `sk template create <name> "<description>"` copies the canonical template into `./skills/<name>`, rewrites the YAML front matter, and adds stub prompt/test files so any agent can use the new helper. The source template comes from `sk config get template_source` (defaults to `@anthropics/skills template-skill`). Change it with `sk config set template_source <repo>/<skill>`. The install root follows `./skills` unless you override it via `sk config set default_root <dir>`.
@@ -122,7 +122,7 @@ make qlty-smells               # blocking; use make qlty-smells-advisory for war
 | `sk repo remove <alias-or-repo> [--json]` | Remove a cached repo entry by alias or repo spec when it’s no longer needed. |
 | `sk repo search --repo <alias-or-repo> [--all] [--json]` | List every skill exposed by a cached repo before installing (replacement for `sk repo catalog`). |
 | `sk repo search <query> [--repo alias] [--json]` | Search all cached repos (or a single repo via `--repo`) for matching skills. |
-| `sk update` | Refresh cached repos (safe to run on CI). |
+| `sk cache refresh` | Refresh cached repos (safe to run on CI). |
 | `sk upgrade [--all or <name>] [--dry-run]` | Copy newer commits into the repo and update the lockfile. |
 | `sk template create <name> "<description>"` | Scaffold a new skill from the configured template into `skills/<name>`. |
 | `sk sync-back <name> [-m "..."]` | Push local edits (or brand-new skills) to the configured repo and open a PR with `gh`. |

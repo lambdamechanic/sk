@@ -125,7 +125,7 @@ fn upgrade_fetches_cache_and_applies_without_update() {
         &serde_json::to_string_pretty(&lock).unwrap(),
     );
 
-    // Advance remote to v2 (already done in init); do NOT run `sk update`
+    // Advance remote to v2 (already done in init); do NOT run `sk cache refresh`
 
     // Run upgrade: should fetch and apply
     let mut cmd = cargo_bin_cmd!("sk");
