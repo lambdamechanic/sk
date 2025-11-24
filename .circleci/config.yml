@@ -1,42 +1,52 @@
 version: 2.1
 
-jobs:
-  build:
+executors:
+  rust:
     docker:
-      - image: cimg/rust:1.91.1
-    environment:
-      CARGO_TERM_COLOR: always
+      - image: cimg/rust:1.82
+    working_directory: ~/project
+
+commands:
+  cargo-cache-keys:
+    parameters:
+      path:
+        type: string
+    steps:
+      - save_cache:
+          key: cargo-cache-<< parameters.path >>-{{ checksum "Cargo.lock" }}
+          paths:
+            - ~/.cargo/registry
+            - ~/.cargo/git
+
+jobs:
+  build-test:
+    executor: rust
     steps:
       - checkout
-
       - restore_cache:
           keys:
-            - v1-cargo-{{ arch }}-{{ checksum "Cargo.lock" }}
-            - v1-cargo-{{ arch }}-
-
+            - cargo-cache-{{ checksum "Cargo.lock" }}
+            - cargo-cache-
       - run:
-          name: Install rust components
-          command: |
-            rustup component add rustfmt clippy
-
+          name: Fetch dependencies
+          command: cargo fetch
       - run:
-          name: fmt + clippy
-          command: |
-            cargo fmt --all --check
-            cargo clippy --all-targets --all-features -- -D warnings
-
+          name: Format check
+          command: cargo fmt -- --check
       - run:
-          name: tests
-          command: cargo test --all --locked --no-fail-fast
-
+          name: Clippy
+          command: cargo clippy --all-targets --all-features -- -D warnings
+      - run:
+          name: Tests
+          command: cargo test --all --all-features
       - save_cache:
-          key: v1-cargo-{{ arch }}-{{ checksum "Cargo.lock" }}
+          key: cargo-cache-{{ checksum "Cargo.lock" }}
           paths:
-            - /usr/local/cargo/registry
-            - /usr/local/cargo/git
-            - target
+            - ~/.cargo/registry
+            - ~/.cargo/git
 
 workflows:
-  build:
+  version: 2
+  ci:
     jobs:
-      - build
+      - build-test
