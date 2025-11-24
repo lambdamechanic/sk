@@ -37,7 +37,6 @@ fn main() -> Result<()> {
             warn_deprecated("check", "sk doctor --summary");
             cmd_doctor(CmdDoctorConfig {
                 names: &names,
-                root_flag: None,
                 summary: true,
                 status: false,
                 diff: false,
@@ -49,7 +48,6 @@ fn main() -> Result<()> {
             warn_deprecated("status", "sk doctor --status");
             cmd_doctor(CmdDoctorConfig {
                 names: &names,
-                root_flag: None,
                 summary: false,
                 status: true,
                 diff: false,
@@ -61,7 +59,6 @@ fn main() -> Result<()> {
             warn_deprecated("diff", "sk doctor --diff");
             cmd_doctor(CmdDoctorConfig {
                 names: &names,
-                root_flag: None,
                 summary: false,
                 status: false,
                 diff: true,
@@ -109,10 +106,8 @@ fn main() -> Result<()> {
             diff,
             json,
             apply,
-            ..
         } => cmd_doctor(CmdDoctorConfig {
             names: &names,
-            root_flag: None,
             summary,
             status,
             diff,
@@ -228,7 +223,6 @@ fn warn_deprecated(cmd: &str, replacement: &str) {
 
 struct CmdDoctorConfig<'a> {
     names: &'a [String],
-    root_flag: Option<&'a str>,
     summary: bool,
     status: bool,
     diff: bool,
@@ -261,7 +255,7 @@ fn cmd_doctor(cfg: CmdDoctorConfig<'_>) -> Result<()> {
 
     doctor::run_doctor(DoctorArgs {
         names: cfg.names,
-        root: cfg.root_flag,
+        root: None,
         mode,
         json: cfg.json,
         apply: cfg.apply,

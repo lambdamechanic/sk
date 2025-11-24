@@ -95,8 +95,6 @@ pub enum Commands {
     )]
     Doctor {
         names: Vec<String>,
-        #[arg(long)]
-        root: Option<String>,
         #[arg(
             long,
             conflicts_with_all = ["status", "diff"],

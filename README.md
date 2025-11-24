@@ -133,7 +133,7 @@ make qlty-smells               # blocking (use make qlty-smells-advisory for war
 ```
 
 ## Key concepts & layout
-- `skills/` — default install root (override via `sk init --root` or `sk config set default_root`).
+- `skills/` — default install root (override via `sk init --root` or `sk config set default_root`; all commands operate on the configured default root—per-command `--root` overrides have been removed).
 - `skills.lock.json` — versioned lockfile tracking each installed skill plus the shared repo registry (aliases, repo specs, commit/digest, timestamps).
 - Cache clones live under `~/.cache/sk/repos/<host>/<owner>/<repo>` (override with `SK_CACHE_DIR`).
 - User config lives in `~/.config/sk/config.json` (override with `SK_CONFIG_DIR`). Keys: `default_root`, `default_repo`, `template_source`, `protocol` (`ssh` or `https`), `default_host`, `github_user`.
