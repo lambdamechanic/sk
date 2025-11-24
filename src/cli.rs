@@ -33,14 +33,10 @@ pub enum Commands {
     },
     Where {
         installed_name: String,
-        #[arg(long)]
-        root: Option<String>,
     },
     #[command(hide = true, about = "DEPRECATED: use `sk doctor --summary` instead")]
     Check {
         names: Vec<String>,
-        #[arg(long)]
-        root: Option<String>,
         #[arg(long)]
         json: bool,
     },
@@ -48,29 +44,21 @@ pub enum Commands {
     Status {
         names: Vec<String>,
         #[arg(long)]
-        root: Option<String>,
-        #[arg(long)]
         json: bool,
     },
     #[command(about = "Show diffs between local skills and their remote repos")]
     Diff {
         names: Vec<String>,
-        #[arg(long)]
-        root: Option<String>,
     },
     Update,
     Upgrade {
         #[arg(allow_hyphen_values = true)]
         target: String, // installed-name or --all
         #[arg(long)]
-        root: Option<String>,
-        #[arg(long)]
         dry_run: bool,
     },
     Remove {
         installed_name: String,
-        #[arg(long)]
-        root: Option<String>,
         #[arg(long)]
         force: bool,
     },
@@ -80,8 +68,6 @@ pub enum Commands {
         branch: Option<String>,
         #[arg(long)]
         message: Option<String>,
-        #[arg(long)]
-        root: Option<String>,
         #[arg(
             long,
             help = "Target repo for new skills (URL, file://, or @owner/repo)"

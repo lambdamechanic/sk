@@ -32,15 +32,12 @@ fn main() -> Result<()> {
     match cli.command {
         Commands::Init { root } => cmd_init(root.as_deref()),
         Commands::List { root, json } => cmd_list(root.as_deref(), json),
-        Commands::Where {
-            installed_name,
-            root,
-        } => cmd_where(&installed_name, root.as_deref()),
-        Commands::Check { names, root, json } => {
+        Commands::Where { installed_name } => cmd_where(&installed_name, None),
+        Commands::Check { names, json, .. } => {
             warn_deprecated("check", "sk doctor --summary");
             cmd_doctor(CmdDoctorConfig {
                 names: &names,
-                root_flag: root.as_deref(),
+                root_flag: None,
                 summary: true,
                 status: false,
                 diff: false,
@@ -48,11 +45,11 @@ fn main() -> Result<()> {
                 apply: false,
             })
         }
-        Commands::Status { names, root, json } => {
+        Commands::Status { names, json, .. } => {
             warn_deprecated("status", "sk doctor --status");
             cmd_doctor(CmdDoctorConfig {
                 names: &names,
-                root_flag: root.as_deref(),
+                root_flag: None,
                 summary: false,
                 status: true,
                 diff: false,
@@ -60,11 +57,11 @@ fn main() -> Result<()> {
                 apply: false,
             })
         }
-        Commands::Diff { names, root } => {
+        Commands::Diff { names, .. } => {
             warn_deprecated("diff", "sk doctor --diff");
             cmd_doctor(CmdDoctorConfig {
                 names: &names,
-                root_flag: root.as_deref(),
+                root_flag: None,
                 summary: false,
                 status: false,
                 diff: true,
@@ -74,28 +71,25 @@ fn main() -> Result<()> {
         }
         Commands::Update => update::run_update(),
         Commands::Upgrade {
-            target,
-            root,
-            dry_run,
+            target, dry_run, ..
         } => upgrade::run_upgrade(upgrade::UpgradeArgs {
             target: &target,
-            root: root.as_deref(),
+            root: None,
             dry_run,
         }),
         Commands::Remove {
             installed_name,
-            root,
             force,
+            ..
         } => remove::run_remove(remove::RemoveArgs {
             installed_name: &installed_name,
-            root: root.as_deref(),
+            root: None,
             force,
         }),
         Commands::SyncBack {
             installed_name,
             branch,
             message,
-            root,
             repo,
             skill_path,
             https,
@@ -103,22 +97,22 @@ fn main() -> Result<()> {
             installed_name: &installed_name,
             branch: branch.as_deref(),
             message: message.as_deref(),
-            root: root.as_deref(),
+            root: None,
             repo: repo.as_deref(),
             skill_path: skill_path.as_deref(),
             https,
         }),
         Commands::Doctor {
             names,
-            root,
             summary,
             status,
             diff,
             json,
             apply,
+            ..
         } => cmd_doctor(CmdDoctorConfig {
             names: &names,
-            root_flag: root.as_deref(),
+            root_flag: None,
             summary,
             status,
             diff,
