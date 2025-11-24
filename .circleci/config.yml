@@ -38,13 +38,13 @@ jobs:
             python3 -m pip install cram
       - run:
           name: Fetch dependencies
-          command: cargo fetch
+          command: cargo fetch --locked
       - run:
           name: Format check
           command: cargo fmt -- --check
       - run:
           name: Clippy
-          command: cargo clippy --all-targets --all-features -- -D warnings
+          command: cargo clippy --locked --all-targets --all-features -- -D warnings
       - run:
           name: Trust github.com host key for git+ssh in tests
           command: |
@@ -53,7 +53,7 @@ jobs:
             chmod 700 ~/.ssh
       - run:
           name: Tests
-          command: cargo test --all --all-features
+          command: cargo test --locked --all --all-features
       - save_cache:
           key: cargo-cache-{{ checksum "Cargo.lock" }}
           paths:
