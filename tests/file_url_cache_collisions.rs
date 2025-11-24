@@ -126,10 +126,10 @@ fn file_url_caches_do_not_collide() {
     let out = cmd
         .current_dir(&project)
         .env("SK_CACHE_DIR", cache_root.to_str().unwrap())
-        .args(["update"]) // ensures caches exist
+        .args(["cache", "refresh"]) // ensures caches exist
         .output()
         .unwrap();
-    assert!(out.status.success(), "sk update failed: {out:?}");
+    assert!(out.status.success(), "sk cache refresh failed: {out:?}");
 
     // Expect two distinct cache directories under local/o/
     let o_dir = cache_root.join("repos/local/o");

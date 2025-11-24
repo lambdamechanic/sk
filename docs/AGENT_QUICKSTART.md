@@ -68,7 +68,8 @@ sk sync-back new-helper -m "Explain the change"
 
 ## 7. Keeping caches healthy
 ```bash
-sk update                      # refresh cached repos (safe on CI)
+sk cache refresh               # refresh cached repos (safe on CI)
+                                # run once before doctor/upgrade so tips are fresh
 sk doctor --status --json      # detect dirty installs or pending upgrades
 sk doctor --summary --json     # structural integrity, digests, cache drift
 sk doctor --apply              # rebuild installs/caches when corruption is detected

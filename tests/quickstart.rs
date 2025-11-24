@@ -159,8 +159,8 @@ fn sanitized_command(line: &str) -> Option<&str> {
 fn sanitized_command_strips_inline_comments() {
     assert_eq!(sanitized_command("   # full line comment"), None);
     assert_eq!(
-        sanitized_command("sk update    # fetch cache"),
-        Some("sk update")
+        sanitized_command("sk cache refresh    # fetch cache"),
+        Some("sk cache refresh")
     );
     assert_eq!(
         sanitized_command("sk template create \"Retro #1\"  # annotate"),

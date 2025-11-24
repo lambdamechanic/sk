@@ -37,7 +37,7 @@ fn diff_shows_remote_updates_after_cache_refresh() {
     fix.install_from_remote(&remote, "demo");
 
     remote.overwrite_file("file.txt", "v2\n", "v2");
-    fix.sk_success(&["update"]);
+    fix.sk_success(&["cache", "refresh"]);
 
     let output = fix
         .sk_cmd()

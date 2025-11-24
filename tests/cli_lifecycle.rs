@@ -17,14 +17,14 @@ fn lifecycle_install_update_upgrade_and_remove_flow() {
     assert_eq!(status[0].state, "clean");
     assert!(status[0].update.is_none());
 
-    // Remote advances to v2; cache-only update should surface via status.
+    // Remote advances to v2; cache-only refresh should surface via status.
     let v2 = remote.overwrite_file("file.txt", "v2\n", "v2");
 
     // Without cache refresh, status remains unaware of updates.
     let pre_update = current_status(&fx);
     assert!(pre_update[0].update.is_none());
 
-    fx.sk_success(&["update"]);
+    fx.sk_success(&["cache", "refresh"]);
 
     let post_update = current_status(&fx);
     let update_str = post_update[0]

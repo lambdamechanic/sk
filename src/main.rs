@@ -21,7 +21,7 @@ use clap::{CommandFactory, Parser};
 use owo_colors::OwoColorize;
 use std::io;
 
-use crate::cli::{Cli, Commands, ConfigCmd, RepoCmd, TemplateCmd};
+use crate::cli::{CacheCmd, Cli, Commands, ConfigCmd, RepoCmd, TemplateCmd};
 use crate::doctor::{DoctorArgs, DoctorMode};
 use serde::Serialize;
 use std::io::IsTerminal;
@@ -33,40 +33,9 @@ fn main() -> Result<()> {
         Commands::Init { root } => cmd_init(root.as_deref()),
         Commands::List { root, json } => cmd_list(root.as_deref(), json),
         Commands::Where { installed_name } => cmd_where(&installed_name, None),
-        Commands::Check { names, json, .. } => {
-            warn_deprecated("check", "sk doctor --summary");
-            cmd_doctor(CmdDoctorConfig {
-                names: &names,
-                summary: true,
-                status: false,
-                diff: false,
-                json,
-                apply: false,
-            })
-        }
-        Commands::Status { names, json, .. } => {
-            warn_deprecated("status", "sk doctor --status");
-            cmd_doctor(CmdDoctorConfig {
-                names: &names,
-                summary: false,
-                status: true,
-                diff: false,
-                json,
-                apply: false,
-            })
-        }
-        Commands::Diff { names, .. } => {
-            warn_deprecated("diff", "sk doctor --diff");
-            cmd_doctor(CmdDoctorConfig {
-                names: &names,
-                summary: false,
-                status: false,
-                diff: true,
-                json: false,
-                apply: false,
-            })
-        }
-        Commands::Update => update::run_update(),
+        Commands::Cache { cmd } => match cmd {
+            CacheCmd::Refresh => update::run_cache_refresh(),
+        },
         Commands::Upgrade {
             target, dry_run, ..
         } => upgrade::run_upgrade(upgrade::UpgradeArgs {
@@ -172,23 +141,6 @@ fn cmd_repo(cmd: RepoCmd) -> Result<()> {
             https,
         }),
         RepoCmd::List { json } => repo::run_repo_list(repo::RepoListArgs { json }),
-        RepoCmd::Catalog {
-            target,
-            https,
-            json,
-        } => {
-            warn_deprecated(
-                "repo catalog",
-                "sk repo search --repo <alias-or-repo> --all",
-            );
-            repo::run_repo_search(repo::RepoSearchArgs {
-                query: None,
-                target: Some(&target),
-                https,
-                json,
-                list_all: true,
-            })
-        }
         RepoCmd::Search {
             query,
             repo: target,
@@ -212,13 +164,6 @@ fn cmd_repo(cmd: RepoCmd) -> Result<()> {
             json,
         }),
     }
-}
-
-fn warn_deprecated(cmd: &str, replacement: &str) {
-    eprintln!(
-        "warning: `sk {cmd}` is deprecated; use `{replacement}` instead.",
-        replacement = replacement
-    );
 }
 
 struct CmdDoctorConfig<'a> {

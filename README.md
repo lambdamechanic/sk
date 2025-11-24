@@ -75,13 +75,14 @@ Implementation notes, machine-readable catalog output, cache layouts, building f
 ### 8. Keep caches fresh and roll forward clean installs
 <!-- QUICKSTART COMMANDS START -->
 ```bash
-sk update                    # fetch every repo referenced in the lockfile (cache-only)
+sk cache refresh             # fetch every repo referenced in the lockfile (cache-only)
 sk doctor --diff             # compare local installs against the cached remote tip
 sk doctor --diff brand-guidelines  # limit the diff to just the named installs
 sk upgrade brand-guidelines --dry-run  # show old -> new commits without touching the repo
 sk upgrade --all             # apply upgrades for every clean (unmodified) skill
 sk remove <name>             # refuses if modified unless you pass --force
 ```
+`sk cache refresh` is the only network step that updates remote knowledge; run it once per CI job (or before `sk doctor --diff` / `sk upgrade`) so doctor/upgrades compare against the latest origin tip.
 <!-- QUICKSTART COMMANDS END -->
 `sk upgrade --all` skips modified installs and prints the commit span so you can decide whether to `sync-back` or revert.
 
@@ -183,7 +184,7 @@ That paragraph solves the “chicken-and-egg” problem: the agent reads the pol
 | `sk repo remove <alias-or-repo> [--json]` | Drop a cached repo entry (alias or repo spec) when you no longer need it. |
 | `sk repo search --repo <alias-or-repo> [--all] [--json]` | List every skill exposed by a cached repo before installing (replacement for `sk repo catalog`). |
 | `sk repo search <query> [--repo alias] [--json]` | Search all cached repos (or a single repo via `--repo`) for matching skills. |
-| `sk update` | Refresh cached repos (safe to run on CI). |
+| `sk cache refresh` | Refresh cached repos (safe to run on CI). |
 | `sk upgrade [--all or <name>] [--dry-run]` | Copy newer commits into the repo and update the lockfile. |
 | `sk template create <name> "<description>"` | Scaffold a new skill from the configured template into `skills/<name>`. |
 | `sk sync-back <name> [-m "..."]` | Push local edits (or brand-new skills) to the configured repo and auto-open a PR with `gh`. |

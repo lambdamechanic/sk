@@ -66,8 +66,8 @@ fn status_reports_remote_update_after_cache_fetch() {
     support::git(&["push", "origin", "main"], &remote.work);
     let v2 = remote.head();
 
-    let out = fix.sk_cmd().args(["update"]).output().unwrap();
-    assert!(out.status.success(), "sk update failed: {out:?}");
+    let out = fix.sk_cmd().args(["cache", "refresh"]).output().unwrap();
+    assert!(out.status.success(), "sk cache refresh failed: {out:?}");
 
     let status_after_update = status_json(&fix);
     assert_eq!(

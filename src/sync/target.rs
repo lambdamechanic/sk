@@ -18,7 +18,7 @@ pub(super) fn build_existing_target(entry: lock::LockSkill, index: usize) -> Res
     if !git::has_object(&cache_dir, &entry.commit)? {
         let short = &entry.commit[..entry.commit.len().min(7)];
         bail!(
-            "locked commit {short} missing in cache for {}/{}. Run 'sk update' or 'sk doctor --apply' first.",
+            "locked commit {short} missing in cache for {}/{}. Run 'sk cache refresh' or 'sk doctor --apply' first.",
             &spec.owner,
             &spec.repo
         );

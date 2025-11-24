@@ -15,7 +15,7 @@ description: "How to use the repo-scoped sk CLI to manage Claude Skills in this 
 ## Core workflow
 1. **Refresh the cache** (optional but fast):
    ```bash
-   target/debug/sk update
+   target/debug/sk cache refresh
    ```
 2. **Install or upgrade a skill** (alias keeps folder names stable):
    ```bash
