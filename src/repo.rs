@@ -29,29 +29,50 @@ pub fn run_repo_add(args: RepoAddArgs) -> Result<()> {
         paths::resolve_or_primary_cache_path(&spec.url, &spec.host, &spec.owner, &spec.repo);
     git::ensure_cached_repo(&cache_dir, &spec)?;
 
-    let alias = args
+    let requested_alias = args
         .alias
         .map(|s| s.to_string())
         .unwrap_or_else(|| preferred_alias(&spec));
+    let provided_alias = args.alias.map(|s| s.to_string());
 
     let lock_path = project_root.join("skills.lock.json");
+    let mut already_registered_alias: Option<String> = None;
+    let mut inserted = false;
     lock::edit_lockfile(&lock_path, |lf| {
-        ensure_alias_available(&lf.repos, &alias, None)?;
         let key = lock::repo_key(&spec);
         if let Some(existing) = lf.repos.entry_by_key(&key) {
-            bail!(
-                "repo {}/{} already registered under alias '{}'",
-                spec.owner,
-                spec.repo,
-                existing.alias
-            );
+            if let Some(provided) = provided_alias.as_deref() {
+                if provided != existing.alias {
+                    bail!(
+                        "repo {}/{} already registered under alias '{}'; remove it first with `sk repo remove {}` if you want to re-add with alias '{}'",
+                        spec.owner,
+                        spec.repo,
+                        existing.alias,
+                        existing.alias,
+                        provided
+                    );
+                }
+            }
+            already_registered_alias = Some(existing.alias.clone());
+            return Ok(());
         }
-        lf.repos.insert_if_missing(&spec, Some(alias.clone()), None);
+        ensure_alias_available(&lf.repos, &requested_alias, None)?;
+        lf.repos
+            .insert_if_missing(&spec, Some(requested_alias.clone()), None);
         lf.generated_at = Utc::now().to_rfc3339();
+        inserted = true;
         Ok(())
     })?;
 
-    println!("Registered repo '{alias}' -> {}:{}", spec.host, spec.url);
+    if inserted {
+        println!(
+            "Registered repo '{}' -> {}:{}",
+            requested_alias, spec.host, spec.url
+        );
+    } else {
+        let alias = already_registered_alias.unwrap_or_else(|| requested_alias.clone());
+        println!("Repo already registered as '{alias}'; refreshed cache.");
+    }
     Ok(())
 }
 
