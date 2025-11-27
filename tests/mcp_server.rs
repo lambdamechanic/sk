@@ -197,7 +197,7 @@ fn mcp_server_search_and_show_skill() {
         .as_array()
         .expect("skills_list should return skills array");
     assert!(
-        !skills.get(0).and_then(|s| s.get("body")).is_some(),
+        skills.first().and_then(|s| s.get("body")).is_none(),
         "skills_list should not include skill bodies"
     );
 
