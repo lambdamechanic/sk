@@ -118,6 +118,20 @@ fn mcp_server_search_and_show_skill() {
         Some("text/markdown"),
         "quickstart resource should advertise markdown mimeType"
     );
+    let skill_resource = resources
+        .iter()
+        .find(|entry| entry["uri"].as_str() == Some("sk://skill/landing-the-plane"))
+        .expect("SKILL.md should be exposed as a resource");
+    assert_eq!(
+        skill_resource["mimeType"].as_str(),
+        Some("text/markdown"),
+        "skill resource should advertise markdown mimeType"
+    );
+    assert_eq!(
+        skill_resource["title"].as_str(),
+        Some("landing-the-plane"),
+        "skill resource should expose the skill name as title"
+    );
 
     send_frame(
         &mut stdin,
@@ -135,6 +149,56 @@ fn mcp_server_search_and_show_skill() {
     assert!(
         quickstart_body.contains("sk Agent Quickstart"),
         "quickstart resource should include the agent quickstart heading"
+    );
+
+    send_frame(
+        &mut stdin,
+        json!({
+            "jsonrpc":"2.0",
+            "id":7,
+            "method":"resources/read",
+            "params":{"uri":"sk://skill/landing-the-plane"}
+        }),
+    );
+    let skill_read_resp = expect_response(&mut reader, 7);
+    let skill_contents = skill_read_resp["result"]["contents"].as_array().unwrap();
+    assert_eq!(skill_contents.len(), 1);
+    let skill_body = skill_contents[0]["text"].as_str().unwrap();
+    assert!(
+        skill_body.contains("landing checklist"),
+        "skill resource should return SKILL.md body"
+    );
+    let meta = skill_contents[0]["_meta"].as_object().unwrap();
+    assert_eq!(
+        meta.get("installName").and_then(|v| v.as_str()),
+        Some("landing-the-plane"),
+        "skill resource meta should include installName"
+    );
+    assert_eq!(
+        meta.get("skillFile").and_then(|v| v.as_str()),
+        Some("skills/landing-the-plane/SKILL.md"),
+        "skill resource meta should include skillFile path"
+    );
+
+    send_frame(
+        &mut stdin,
+        json!({
+            "jsonrpc":"2.0",
+            "id":8,
+            "method":"tools/call",
+            "params":{
+                "name":"skills_list",
+                "arguments":{}
+            }
+        }),
+    );
+    let skills_list_resp = expect_response(&mut reader, 8);
+    let skills = skills_list_resp["result"]["structuredContent"]["skills"]
+        .as_array()
+        .expect("skills_list should return skills array");
+    assert!(
+        skills.first().and_then(|s| s.get("body")).is_none(),
+        "skills_list should not include skill bodies"
     );
 
     drop(stdin);

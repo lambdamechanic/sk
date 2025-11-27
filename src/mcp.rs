@@ -8,7 +8,7 @@ use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters, ServerHandler},
     model::{
-        CallToolResult, Content, Implementation, ListResourcesResult, PaginatedRequestParam,
+        CallToolResult, Content, Implementation, ListResourcesResult, Meta, PaginatedRequestParam,
         ProtocolVersion, RawResource, ReadResourceRequestParam, ReadResourceResult, Resource,
         ResourceContents, ServerCapabilities, ServerInfo,
     },
@@ -37,6 +37,7 @@ use tokio::{
 const MAX_SEARCH_LIMIT: usize = 25;
 const DEFAULT_SEARCH_LIMIT: usize = 10;
 const QUICKSTART_URI: &str = "sk://quickstart";
+const SKILL_URI_PREFIX: &str = "sk://skill/";
 const QUICKSTART_DOC: &str = include_str!("../docs/AGENT_QUICKSTART.md");
 const BASE_SERVER_INSTRUCTIONS: &str = "Start every task with skills_search to confirm whether a repo skill applies, then use skills_list or skills_show to pull the relevant body text when needed.";
 
@@ -238,11 +239,7 @@ impl SkMcpServer {
         } else {
             skills
         };
-        let include_body = args.include_body.unwrap_or(false);
-        let summaries: Vec<_> = filtered
-            .iter()
-            .map(|skill| skill.to_summary(include_body))
-            .collect();
+        let summaries: Vec<_> = filtered.iter().map(|skill| skill.to_summary()).collect();
         let summary_text = format!(
             "Found {} skill{} under {}",
             summaries.len(),
@@ -361,6 +358,62 @@ impl SkMcpServer {
         raw.size = Some(QUICKSTART_DOC.len() as u32);
         Resource::new(raw, None)
     }
+
+    fn skill_resources(&self) -> Result<Vec<Resource>, McpError> {
+        let skills =
+            scan_skills(&self.project_root, &self.skills_root).map_err(to_internal_error)?;
+        Ok(skills
+            .into_iter()
+            .map(|skill| {
+                let uri = skill_resource_uri(&skill.install_name);
+                let mut raw = RawResource::new(uri, skill.install_name.clone());
+                raw.title = Some(skill.meta.name.clone());
+                raw.description = Some(skill.meta.description.clone());
+                raw.mime_type = Some("text/markdown".into());
+                raw.size = Some(skill.body.len() as u32);
+                Resource::new(raw, None)
+            })
+            .collect())
+    }
+
+    fn read_skill_resource(&self, uri: &str) -> Result<ReadResourceResult, McpError> {
+        self.guard_ready()?;
+        let Some(name) = uri.strip_prefix(SKILL_URI_PREFIX) else {
+            return Err(McpError::resource_not_found(
+                format!("unknown resource: {uri}"),
+                None,
+            ));
+        };
+        if name.trim().is_empty() {
+            return Err(McpError::resource_not_found(
+                "skill resource name must not be empty".to_string(),
+                None,
+            ));
+        }
+        let skills =
+            scan_skills(&self.project_root, &self.skills_root).map_err(to_internal_error)?;
+        let Some(skill) = skills
+            .into_iter()
+            .find(|skill| skill.install_name.eq_ignore_ascii_case(name))
+        else {
+            return Err(McpError::resource_not_found(
+                format!("unknown skill resource: {name}"),
+                None,
+            ));
+        };
+        let mut meta = Meta::new();
+        meta.insert("installName".into(), json!(skill.install_name));
+        meta.insert("skillPath".into(), json!(skill.skill_path));
+        meta.insert("skillFile".into(), json!(skill.skill_file));
+        Ok(ReadResourceResult {
+            contents: vec![ResourceContents::TextResourceContents {
+                uri: uri.to_string(),
+                mime_type: Some("text/markdown".into()),
+                text: skill.body,
+                meta: Some(meta),
+            }],
+        })
+    }
 }
 
 #[tool_router]
@@ -419,8 +472,19 @@ impl ServerHandler for SkMcpServer {
         _request: Option<PaginatedRequestParam>,
         _context: rmcp::service::RequestContext<RoleServer>,
     ) -> impl std::future::Future<Output = Result<ListResourcesResult, McpError>> + Send + '_ {
-        let resource = self.quickstart_resource();
-        std::future::ready(Ok(ListResourcesResult::with_all_items(vec![resource])))
+        let mut resources = vec![self.quickstart_resource()];
+        let result = if self.is_ready() {
+            match self.skill_resources() {
+                Ok(mut skills) => {
+                    resources.append(&mut skills);
+                    Ok(ListResourcesResult::with_all_items(resources))
+                }
+                Err(err) => Err(err),
+            }
+        } else {
+            Ok(ListResourcesResult::with_all_items(resources))
+        };
+        std::future::ready(result)
     }
 
     fn read_resource(
@@ -428,20 +492,20 @@ impl ServerHandler for SkMcpServer {
         request: ReadResourceRequestParam,
         _context: rmcp::service::RequestContext<RoleServer>,
     ) -> impl std::future::Future<Output = Result<ReadResourceResult, McpError>> + Send + '_ {
-        std::future::ready(if request.uri == QUICKSTART_URI {
-            Ok(ReadResourceResult {
+        std::future::ready(match request.uri.as_str() {
+            QUICKSTART_URI => Ok(ReadResourceResult {
                 contents: vec![ResourceContents::TextResourceContents {
                     uri: QUICKSTART_URI.to_string(),
                     mime_type: Some("text/markdown".into()),
                     text: QUICKSTART_DOC.to_string(),
                     meta: None,
                 }],
-            })
-        } else {
-            Err(McpError::resource_not_found(
+            }),
+            uri if uri.starts_with(SKILL_URI_PREFIX) => self.read_skill_resource(uri),
+            _ => Err(McpError::resource_not_found(
                 format!("unknown resource: {}", request.uri),
                 None,
-            ))
+            )),
         })
     }
 
@@ -458,7 +522,6 @@ impl ServerHandler for SkMcpServer {
 #[serde(rename_all = "camelCase")]
 struct ListArgs {
     query: Option<String>,
-    include_body: Option<bool>,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -496,6 +559,10 @@ fn make_tool_result(contents: Vec<Content>, structured: Value) -> CallToolResult
 
 fn to_internal_error(err: anyhow::Error) -> McpError {
     McpError::internal_error(err.to_string(), None)
+}
+
+fn skill_resource_uri(install_name: &str) -> String {
+    format!("{SKILL_URI_PREFIX}{install_name}")
 }
 
 fn server_implementation() -> Implementation {

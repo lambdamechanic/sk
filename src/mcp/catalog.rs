@@ -11,20 +11,19 @@ pub(crate) struct SkillRecord {
     pub(crate) skill_path: String,
     pub(crate) skill_file: String,
     pub(crate) meta: skills::SkillMeta,
-    body: String,
+    pub(crate) body: String,
     body_ascii_lower: String,
     search_blob: String,
 }
 
 impl SkillRecord {
-    pub(crate) fn to_summary(&self, include_body: bool) -> SkillSummary {
+    pub(crate) fn to_summary(&self) -> SkillSummary {
         SkillSummary {
             install_name: self.install_name.clone(),
             name: self.meta.name.clone(),
             description: self.meta.description.clone(),
             skill_path: self.skill_path.clone(),
             skill_file: self.skill_file.clone(),
-            body: include_body.then(|| self.body.clone()),
         }
     }
 
@@ -72,8 +71,6 @@ pub(crate) struct SkillSummary {
     pub(crate) description: String,
     pub(crate) skill_path: String,
     pub(crate) skill_file: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) body: Option<String>,
 }
 
 #[derive(Serialize)]
