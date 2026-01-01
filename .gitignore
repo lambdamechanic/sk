@@ -8,7 +8,6 @@
 *.swo
 
 # Cargo
-Cargo.lock
 
 # History notes (optional)
 # history/
