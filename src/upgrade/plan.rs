@@ -1,7 +1,7 @@
 use super::UpgradeArgs;
 use crate::{digest, git, install, lock, paths};
 use anyhow::{bail, Context, Result};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::tempdir;
 
@@ -41,6 +41,9 @@ pub struct UpgradeSpan {
 pub struct SkippedUpgrade {
     pub install_name: String,
     pub span: Option<UpgradeSpan>,
+    pub dest: PathBuf,
+    pub cache_dir: PathBuf,
+    pub skill_path: String,
 }
 
 pub struct UpgradePlanResult {
@@ -142,6 +145,9 @@ fn evaluate_skill_upgrade(
             return Ok(Some(UpgradeDecision::Skip(SkippedUpgrade {
                 install_name: skill.install_name.clone(),
                 span,
+                dest,
+                cache_dir,
+                skill_path: skill.source.skill_path().to_string(),
             })));
         }
         bail!(
