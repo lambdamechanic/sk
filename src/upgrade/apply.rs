@@ -190,6 +190,7 @@ fn render_local_vs_upstream_diff(entry: &SkippedUpgrade) -> Result<String> {
         &entry.skill_path,
         checkout.path(),
     )?;
+    let local_path = fs::canonicalize(&entry.dest).unwrap_or_else(|_| entry.dest.clone());
 
     let output = Command::new("git")
         .arg("--no-pager")
@@ -202,7 +203,7 @@ fn render_local_vs_upstream_diff(entry: &SkippedUpgrade) -> Result<String> {
         .arg("--dst-prefix=upstream/")
         .arg("--unified=3")
         .arg("--")
-        .arg(&entry.dest)
+        .arg(local_path)
         .arg(checkout.path())
         .output()
         .context("git diff --no-index for skipped upgrade")?;
@@ -221,14 +222,18 @@ fn render_local_vs_upstream_diff(entry: &SkippedUpgrade) -> Result<String> {
     }
 
     const MAX_LINES: usize = 160;
-    let mut lines: Vec<&str> = diff_text.lines().collect();
-    let truncated = lines.len() > MAX_LINES;
-    if truncated {
-        lines.truncate(MAX_LINES);
+    let mut lines = Vec::new();
+    let mut truncated = false;
+    for (idx, line) in diff_text.lines().enumerate() {
+        if idx >= MAX_LINES {
+            truncated = true;
+            break;
+        }
+        lines.push(line);
     }
     let mut rendered = lines.join("\n");
     if truncated {
-        rendered.push_str(&format!("\n…truncated to {MAX_LINES} lines…"));
+        rendered.push_str(&format!("\n...truncated to {MAX_LINES} lines..."));
     }
     Ok(rendered)
 }
