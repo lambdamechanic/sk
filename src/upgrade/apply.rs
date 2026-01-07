@@ -5,6 +5,8 @@ use anyhow::{anyhow, bail, Context, Result};
 use chrono::Utc;
 use std::fs;
 use std::path::Path;
+use std::process::Command;
+use tempfile::tempdir;
 
 pub fn stage_upgrades(staging_root: &Path, tasks: &[UpgradeTask]) -> Result<Vec<StagedUpgrade>> {
     let mut staged = Vec::new();
@@ -138,15 +140,30 @@ pub fn print_skipped(skipped: &[SkippedUpgrade]) {
     println!("Skipped {} skill(s) with local edits:", skipped.len());
     for entry in skipped {
         match &entry.span {
-            Some(span) => println!(
-                "- {name}: local edits plus upstream update ({} -> {}). Run 'sk sync-back {name}' or revert changes, then rerun 'sk upgrade {name}'.",
-                short_sha(&span.current),
-                short_sha(&span.available),
-                name = entry.install_name
-            ),
+            Some(span) => {
+                println!(
+                    "- {name}: local edits plus upstream update ({} -> {}). Run 'sk sync-back {name}' or revert changes, then rerun 'sk upgrade {name}'.",
+                    short_sha(&span.current),
+                    short_sha(&span.available),
+                    name = entry.install_name
+                );
+                match render_local_vs_upstream_diff(entry) {
+                    Ok(diff) if !diff.is_empty() => {
+                        println!("  Diff local vs upstream {}:", short_sha(&span.available));
+                        for line in diff.lines() {
+                            println!("    {}", line);
+                        }
+                    }
+                    Ok(_) => {
+                        println!("  (diff is empty)");
+                    }
+                    Err(err) => {
+                        println!("  (diff unavailable: {err})");
+                    }
+                }
+            }
             None => println!(
-                "- {name}: local edits (already at locked commit). Run 'sk sync-back {name}' or revert changes before upgrading."
-                ,
+                "- {name}: local edits (already at locked commit). Run 'sk sync-back {name}' or revert changes before upgrading.",
                 name = entry.install_name
             ),
         }
@@ -159,4 +176,64 @@ fn short_sha(full: &str) -> &str {
     } else {
         full
     }
+}
+
+fn render_local_vs_upstream_diff(entry: &SkippedUpgrade) -> Result<String> {
+    let span = entry
+        .span
+        .as_ref()
+        .ok_or_else(|| anyhow!("missing span for diff"))?;
+    let checkout = tempdir().context("create temporary directory for skipped diff")?;
+    install::extract_subdir_from_commit(
+        &entry.cache_dir,
+        &span.available,
+        &entry.skill_path,
+        checkout.path(),
+    )?;
+    let local_path = fs::canonicalize(&entry.dest).unwrap_or_else(|_| entry.dest.clone());
+
+    let output = Command::new("git")
+        .arg("--no-pager")
+        .arg("-c")
+        .arg("core.autocrlf=false")
+        .arg("diff")
+        .arg("--no-index")
+        .arg("--color=never")
+        .arg("--src-prefix=local/")
+        .arg("--dst-prefix=upstream/")
+        .arg("--unified=3")
+        .arg("--")
+        .arg(local_path)
+        .arg(checkout.path())
+        .output()
+        .context("git diff --no-index for skipped upgrade")?;
+
+    let status = output.status.code().unwrap_or_default();
+    if status != 0 && status != 1 {
+        bail!(
+            "git diff exited with status {status}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    let diff_text = String::from_utf8_lossy(&output.stdout).into_owned();
+    if diff_text.trim().is_empty() {
+        return Ok(String::new());
+    }
+
+    const MAX_LINES: usize = 160;
+    let mut lines = Vec::new();
+    let mut truncated = false;
+    for (idx, line) in diff_text.lines().enumerate() {
+        if idx >= MAX_LINES {
+            truncated = true;
+            break;
+        }
+        lines.push(line);
+    }
+    let mut rendered = lines.join("\n");
+    if truncated {
+        rendered.push_str(&format!("\n...truncated to {MAX_LINES} lines..."));
+    }
+    Ok(rendered)
 }
