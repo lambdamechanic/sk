@@ -305,8 +305,12 @@ impl CliFixture {
         serde_json::from_slice(&data).unwrap()
     }
 
+    pub fn managed_root(&self) -> PathBuf {
+        self.project.join(".agents").join("skills")
+    }
+
     pub fn skill_dir(&self, name: &str) -> PathBuf {
-        self.project.join("skills").join(name)
+        self.managed_root().join(name)
     }
 
     pub fn create_remote(&self, repo: &str, skill_subdir: &str, skill_name: &str) -> RemoteRepo {

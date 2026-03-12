@@ -4,9 +4,12 @@ You are reading the machine-facing quickstart that Codex (or any MCP-capable age
 
 ## Audience & Goals
 - Repo-scoped agents working from `/home/mark/lambdalabs/sk`.
-- Keep the local `skills/` tree synchronized with upstream catalogs and skill edits.
+- Keep the local managed `.agents/skills` tree synchronized with upstream catalogs and skill edits.
+- Use `.agents/skills` and/or `.claude/skills` when the user wants native agent discovery instead of MCP-only access.
 - Always advertise the available skills to the user by calling the MCP server.
-- Leave the repo clean (git + bd) after every change.
+- Leave the repo clean (git + br) after every change.
+
+**Note:** `br` is non-invasive and never executes git commands. After `br sync --flush-only`, you must manually run `git add .beads/` and commit the tracker changes yourself.
 
 ## 1. Bootstrap the CLI
 ```bash
@@ -19,12 +22,13 @@ sk --version                   # confirm the binary works
 
 ## 2. Initialize the repo copy
 ```bash
-sk init                        # idempotent; sets up ./skills + lockfile
+sk init --expose both         # idempotent; sets up ./.agents/skills + lockfile plus native discovery links
 sk repo add @anthropics/skills --alias anthropic
 sk repo list
 ```
 
 - `sk init` refuses to clobber edits; report any dirty tree instead of deleting files.
+- If the repo already has a native directory preference, `sk expose codex`, `sk expose claude`, or `sk expose both` can be rerun later without moving the managed root.
 - Keep `skills.lock.json` under version control at all times.
 
 ## 3. Install representative skills
@@ -40,16 +44,16 @@ sk list
 ## 4. MCP ritual every session
 1. Start in repo root, ensure `sk mcp-server` is registered (see README snippet).
 2. Call `skills_list` once to enumerate helpers; mention any relevant skill names in your reasoning.
-3. Use `skills_search` when you need targeted guidance (e.g., `{"query":"bd ready"}`).
+3. Use `skills_search` when you need targeted guidance (e.g., `{"query":"br ready"}`).
 4. Use `skills_show` to pull the full body before summarizing instructions for the user.
 
-> Never skip this ritual unless the repo explicitly states there are zero vendored skills. MCP calls are read-only—they exist purely to surface instructions. All edits to `skills/` must flow through the `sk` CLI plus normal git/bd tracking.
+> Never skip this ritual unless the repo explicitly states there are zero vendored skills. MCP calls are read-only—they exist purely to surface instructions. All edits to `.agents/skills` must flow through the `sk` CLI plus normal git/br tracking.
 
 ## 5. Daily workflow loop
-1. **Plan** — consult `AGENTS.md` + skills, run `bd ready --json`, and note which issue you are working on.
+1. **Plan** — consult `AGENTS.md` + skills, run `br ready --json`, and note which issue you are working on.
 2. **Modify** — run `sk ...` commands as needed (install, upgrade, sync-back).
 3. **Validate** — `cargo fmt`, `cargo test`, or any repo-specific guardrails.
-4. **Track** — update the relevant bd issue (`bd update <id> --status in_progress`, later `--status closed`).
+4. **Track** — update the relevant br issue (`br update <id> --status in_progress`, later `br close <id>`).
 5. **Summarize** — describe what changed, reference files + line numbers, and mention any remaining risks.
 
 Keep `git status -sb` clean; never leave throwaway files or stash state behind.
@@ -58,13 +62,13 @@ Keep `git status -sb` clean; never leave throwaway files or stash state behind.
 ```bash
 sk config set default_repo @your-gh-username/skills
 sk template create new-helper "Short description"
-# edit files under skills/new-helper/ ...
+# edit files under .agents/skills/new-helper/ ...
 sk sync-back new-helper -m "Explain the change"
 ```
 
 - `sk sync-back` shells out to `gh` for PR automation; ensure the CLI is authenticated (`gh auth status`).
 - If `rsync` is missing, the command falls back to a slower recursive copy—call that out in your notes so the user can install it later.
-- Commit `.beads/issues.jsonl` together with any skill edits so tracker state stays synchronized.
+- If tracker state changed, run `br sync --flush-only`, then `git add .beads/` and commit the exported tracker files together with any skill edits.
 
 ## 7. Keeping caches healthy
 ```bash
@@ -75,20 +79,20 @@ sk doctor --summary --json     # structural integrity, digests, cache drift
 sk doctor --apply              # rebuild installs/caches when corruption is detected
 ```
 
-- Prefer `sk upgrade --all` only when `skills/` is clean (no local edits). Otherwise, upgrade specific installs after syncing them back upstream.
+- Prefer `sk upgrade --all` only when `.agents/skills` is clean (no local edits). Otherwise, upgrade specific installs after syncing them back upstream.
 - When `sk doctor --status` reports `modified`, either `sk sync-back <skill>` or `sk remove <skill>` (if the user asked you to discard the work).
 
 ## 8. Recovery playbook
 - **Interrupted upgrade/install** — re-run the command; the lockfile ensures the CLI is idempotent.
-- **Git conflict in `skills/`** — describe the conflicting files, ask before overwriting.
-- **bd mismatch** — run `bd update <id> --status in_progress` and commit the resulting `.beads/issues.jsonl` change.
+- **Git conflict in `.agents/skills`** — describe the conflicting files, ask before overwriting.
+- **br mismatch** — run `br update <id> --status in_progress`, then `br sync --flush-only`, `git add .beads/`, and commit the tracker export.
 - **MCP call failure** — restart `sk mcp-server` from repo root and re-issue `skills_list`.
 
 ## 9. Session shutdown checklist
 - `cargo test` (or the requested subset) passes locally.
 - `sk doctor --status --json` reports all installs clean.
 - `git status -sb` is clean; no staged-but-uncommitted files.
-- The relevant bd issue is updated/closed, and `.beads/issues.jsonl` is committed.
+- The relevant br issue is updated/closed, and any exported `.beads/` changes are committed.
 - Mention the latest `skills.lock.json` diff and any remaining TODOs in your final response.
 
 Stay disciplined about these steps and future agents can pick up the repo without surprises.

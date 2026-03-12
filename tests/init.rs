@@ -9,7 +9,7 @@ fn init_creates_install_root_and_lockfile() {
 
     fx.sk_success(&["init"]);
 
-    let skills_dir = fx.project.join("skills");
+    let skills_dir = fx.managed_root();
     assert!(skills_dir.exists(), "init creates install root");
 
     let lock = fx.lock_json();

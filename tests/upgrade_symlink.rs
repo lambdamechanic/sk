@@ -79,7 +79,7 @@ fn upgrade_preserves_symlinks() {
     );
 
     // Install v1 via cached archive
-    let dest = project.join("skills/s0");
+    let dest = project.join(".agents/skills/s0");
     extract_subdir_from_commit(&cache, &v1, "skill", &dest);
 
     // Build lock from installed digest
@@ -122,13 +122,14 @@ fn upgrade_preserves_symlinks() {
     let out = cmd
         .current_dir(&project)
         .env("SK_CACHE_DIR", cache_root.to_str().unwrap())
+        .env("SK_CONFIG_DIR", root.join("config"))
         .args(["upgrade", "--all"])
         .output()
         .unwrap();
     assert!(out.status.success(), "upgrade failed: {out:?}");
 
     // link.txt should still be a symlink pointing to real.txt
-    let link_path = project.join("skills/s0/link.txt");
+    let link_path = project.join(".agents/skills/s0/link.txt");
     assert!(link_path.is_symlink());
     let target = fs::read_link(&link_path).unwrap();
     assert_eq!(target, Path::new("real.txt"));

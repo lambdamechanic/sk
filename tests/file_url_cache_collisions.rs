@@ -126,6 +126,7 @@ fn file_url_caches_do_not_collide() {
     let out = cmd
         .current_dir(&project)
         .env("SK_CACHE_DIR", cache_root.to_str().unwrap())
+        .env("SK_CONFIG_DIR", root.join("config"))
         .args(["cache", "refresh"]) // ensures caches exist
         .output()
         .unwrap();

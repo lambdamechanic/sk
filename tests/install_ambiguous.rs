@@ -54,6 +54,7 @@ fn install_requires_path_when_names_conflict() {
     let out = cmd
         .current_dir(&project)
         .env("SK_CACHE_DIR", root.join("cache").to_str().unwrap())
+        .env("SK_CONFIG_DIR", root.join("config"))
         .args(["install", &file_url, "dupe"]) // no --path
         .output()
         .unwrap();
@@ -83,6 +84,7 @@ fn install_requires_path_when_names_conflict() {
     let out2 = cmd2
         .current_dir(&project)
         .env("SK_CACHE_DIR", root.join("cache").to_str().unwrap())
+        .env("SK_CONFIG_DIR", root.join("config"))
         .args(["install", &file_url, "dupe", "--path", "skills/b"])
         .output()
         .unwrap();
@@ -90,7 +92,7 @@ fn install_requires_path_when_names_conflict() {
         out2.status.success(),
         "install with --path failed: {out2:?}"
     );
-    assert!(project.join("skills/dupe/SKILL.md").exists());
+    assert!(project.join(".agents/skills/dupe/SKILL.md").exists());
 }
 
 #[test]
@@ -129,6 +131,7 @@ fn install_reports_missing_skill_md_for_path() {
     let out = cmd
         .current_dir(&project)
         .env("SK_CACHE_DIR", root.join("cache").to_str().unwrap())
+        .env("SK_CONFIG_DIR", root.join("config"))
         .args(["install", &file_url, "sfile", "--path", "skills/missing"])
         .output()
         .unwrap();
@@ -182,6 +185,7 @@ fn install_reports_invalid_skill_md_for_path() {
     let out = cmd
         .current_dir(&project)
         .env("SK_CACHE_DIR", root.join("cache").to_str().unwrap())
+        .env("SK_CONFIG_DIR", root.join("config"))
         .args(["install", &file_url, "sfile", "--path", "skills/bad"])
         .output()
         .unwrap();

@@ -59,13 +59,14 @@ fn install_from_file_url_writes_lock_and_files() {
     let out = cmd
         .current_dir(&project)
         .env("SK_CACHE_DIR", root.join("cache").to_str().unwrap())
+        .env("SK_CONFIG_DIR", root.join("config"))
         .args(["install", &file_url, "sfile", "--path", "skill"])
         .output()
         .unwrap();
     assert!(out.status.success(), "sk install failed: {out:?}");
 
     // Verify installed directory exists
-    assert!(project.join("skills/sfile/SKILL.md").exists());
+    assert!(project.join(".agents/skills/sfile/SKILL.md").exists());
 
     // Verify lockfile contents
     let lock: Json =
@@ -95,6 +96,7 @@ fn install_from_file_url_writes_lock_and_files() {
     let mut chk = cargo_bin_cmd!("sk");
     let out = chk
         .current_dir(&project)
+        .env("SK_CONFIG_DIR", root.join("config"))
         .args(["doctor", "--summary", "--json"])
         .output()
         .unwrap();

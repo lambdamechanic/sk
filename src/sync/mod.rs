@@ -2,7 +2,7 @@ mod fs_utils;
 mod pr;
 mod target;
 
-use crate::{config, digest, git, lock, paths};
+use crate::{config, digest, git, lock};
 use anyhow::{bail, Context, Result};
 use chrono::Utc;
 use std::env;
@@ -39,8 +39,7 @@ impl<'a> SyncSession<'a> {
     fn new(args: SyncBackArgs<'a>) -> Result<Self> {
         let project_root = git::ensure_git_repo()?;
         let cfg = config::load_or_default()?;
-        let install_root_rel = args.root.unwrap_or(&cfg.default_root);
-        let install_root = paths::resolve_project_path(&project_root, install_root_rel);
+        let install_root = config::resolve_managed_root(&project_root, &cfg, args.root).absolute;
         let dest_installed = install_root.join(args.installed_name);
         if !dest_installed.exists() {
             bail!(

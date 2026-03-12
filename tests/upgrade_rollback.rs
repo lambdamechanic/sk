@@ -95,7 +95,7 @@ fn upgrade_rolls_back_when_apply_fails_mid_loop() {
         .unwrap()
         .trim()
         .to_string();
-        let dest = project.join("skills").join(format!("s{i}"));
+        let dest = project.join(".agents").join("skills").join(format!("s{i}"));
         fs::create_dir_all(&dest).unwrap();
         let mut arch = Command::new("git")
             .args([
@@ -147,7 +147,7 @@ fn upgrade_rolls_back_when_apply_fails_mid_loop() {
     let pre_digests: Vec<String> = skills
         .iter()
         .map(|(name, _, _, _)| {
-            let dest = project.join("skills").join(name);
+            let dest = project.join(".agents").join("skills").join(name);
             digest_dir(&dest)
         })
         .collect();
@@ -157,6 +157,7 @@ fn upgrade_rolls_back_when_apply_fails_mid_loop() {
     let out = cmd
         .current_dir(&project)
         .env("SK_CACHE_DIR", cache_root.to_str().unwrap())
+        .env("SK_CONFIG_DIR", root.join("config"))
         .env("SK_FAIL_AFTER_FIRST_SWAP", "1")
         .args(["upgrade", "--all"])
         .output()
@@ -170,7 +171,7 @@ fn upgrade_rolls_back_when_apply_fails_mid_loop() {
     let post_digests: Vec<String> = skills
         .iter()
         .map(|(name, _, _, _)| {
-            let dest = project.join("skills").join(name);
+            let dest = project.join(".agents").join("skills").join(name);
             digest_dir(&dest)
         })
         .collect();
@@ -244,7 +245,7 @@ fn upgrade_rolls_back_when_copy_fails_in_swap() {
         )
         .unwrap();
         let v1 = v1.trim().to_string();
-        let dest = project.join("skills").join(format!("s{i}"));
+        let dest = project.join(".agents").join("skills").join(format!("s{i}"));
         fs::create_dir_all(&dest).unwrap();
         let mut arch = Command::new("git")
             .args([
@@ -297,6 +298,7 @@ fn upgrade_rolls_back_when_copy_fails_in_swap() {
     let out = cmd
         .current_dir(&project)
         .env("SK_CACHE_DIR", cache_root.to_str().unwrap())
+        .env("SK_CONFIG_DIR", root.join("config"))
         .env("SK_SIMULATE_EXDEV", "1")
         .env("SK_FAIL_COPY", "1")
         .args(["upgrade", "--all"])

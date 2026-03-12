@@ -5,7 +5,7 @@ description: "How to use the repo-scoped sk CLI to manage Claude Skills in this 
 
 # Using the `sk` CLI
 
-`sk` is the repo-scoped Skills manager that installs, audits, and syncs Claude Skills listed in `skills.lock.json`. Treat it like Cargo for skills: installs live under `./skills`, while the cache stays in `~/.cache/sk/repos`.
+`sk` is the repo-scoped Skills manager that installs, audits, and syncs Claude Skills listed in `skills.lock.json`. Treat it like Cargo for skills: installs live under `./.agents/skills`, while the cache stays in `~/.cache/sk/repos`.
 
 ## When to reach for this skill
 - You need to install or upgrade a skill from the canonical skills repo (`https://github.com/lambdamechanic/skills`).
@@ -27,7 +27,7 @@ description: "How to use the repo-scoped sk CLI to manage Claude Skills in this 
    target/debug/sk doctor --status --json   # detect dirty trees vs lockfile
    target/debug/sk doctor --summary --json  # shows pending upgrades or cache drift
    ```
-4. **Sync edits upstream** after modifying a skill under `./skills/<name>`:
+4. **Sync edits upstream** after modifying a skill under `./.agents/skills/<name>`:
    ```bash
    target/debug/sk sync-back <name> --message "Describe the change"
    ```
@@ -72,7 +72,7 @@ What happens:
 - `skills.lock.json` gains a new entry for `sk` with the push timestamp, digest, and commit ID; subsequent `sk doctor --status` runs stay green because the on-disk tree matches that digest.
 
 ## Guardrails
-- Always run `bd update` / `bd close` so `.beads/issues.jsonl` matches any skill changes.
+- Always run `br update` / `br close` so `.beads/issues.jsonl` matches any skill changes.
 - Never edit `skills.lock.json` by hand. Let `sk install`, `sk upgrade`, or `sk remove` update it; commit the lockfile alongside the skill changes.
 - If `sk doctor --status` reports `dirty`, fix the local tree before running `sk upgrade` or `sk sync-back` to avoid partial syncs.
 - `sk upgrade --all` skips skills with local edits and prints reminders to `sk sync-back <name>`; treat that as a temporary state and clean them up promptly so future upgrades stay automatic.

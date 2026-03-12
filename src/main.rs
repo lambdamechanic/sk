@@ -2,10 +2,12 @@ mod cli;
 mod config;
 mod digest;
 mod doctor;
+mod expose;
 mod git;
 mod install;
 mod lock;
 mod mcp;
+mod migrate;
 mod paths;
 mod precommit;
 mod remove;
@@ -21,7 +23,7 @@ use clap::{CommandFactory, Parser};
 use owo_colors::OwoColorize;
 use std::io;
 
-use crate::cli::{CacheCmd, Cli, Commands, ConfigCmd, RepoCmd, TemplateCmd};
+use crate::cli::{CacheCmd, Cli, Commands, ConfigCmd, ExposeTargetArg, RepoCmd, TemplateCmd};
 use crate::doctor::{DoctorArgs, DoctorMode};
 use serde::Serialize;
 use std::io::IsTerminal;
@@ -30,8 +32,19 @@ use unicode_width::UnicodeWidthStr;
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Commands::Init { root } => cmd_init(root.as_deref()),
+        Commands::Init { root, expose } => cmd_init(root.as_deref(), expose),
         Commands::List { root, json } => cmd_list(root.as_deref(), json),
+        Commands::Expose { target, root } => expose::run_expose(expose::ExposeArgs {
+            target: target.into(),
+            root: root.as_deref(),
+        }),
+        Commands::MigrateRoot { from, to, expose } => {
+            migrate::run_migrate_root(migrate::MigrateRootArgs {
+                from: from.as_deref(),
+                to: to.as_deref(),
+                expose: expose.map(Into::into),
+            })
+        }
         Commands::Where { installed_name } => cmd_where(&installed_name, None),
         Commands::Cache { cmd } => match cmd {
             CacheCmd::Refresh => update::run_cache_refresh(),
@@ -207,11 +220,29 @@ fn cmd_doctor(cfg: CmdDoctorConfig<'_>) -> Result<()> {
     })
 }
 
-fn cmd_init(root_flag: Option<&str>) -> Result<()> {
+fn cmd_init(root_flag: Option<&str>, expose_target: Option<ExposeTargetArg>) -> Result<()> {
     let project_root = git::ensure_git_repo()?;
     let mut cfg = config::load_or_default()?;
-    let install_root_rel = root_flag.unwrap_or(&cfg.default_root);
-    let install_root = paths::resolve_project_path(&project_root, install_root_rel);
+    let install_root_rel = match root_flag {
+        Some(root) => root.to_string(),
+        None if config::is_legacy_default_root(&cfg.default_root) => {
+            config::DEFAULT_MANAGED_ROOT.to_string()
+        }
+        None => cfg.default_root.clone(),
+    };
+    let install_root = paths::resolve_project_path(&project_root, &install_root_rel);
+    let legacy_root = paths::resolve_project_path(&project_root, config::LEGACY_DEFAULT_ROOT);
+    if root_flag.is_none()
+        && install_root_rel == config::DEFAULT_MANAGED_ROOT
+        && legacy_root.exists()
+        && !install_root.exists()
+    {
+        bail!(
+            "legacy managed root '{}' already exists. Run `sk migrate-root` to move it to '{}' before re-running `sk init`.",
+            config::LEGACY_DEFAULT_ROOT,
+            config::DEFAULT_MANAGED_ROOT
+        );
+    }
     std::fs::create_dir_all(&install_root)
         .with_context(|| format!("create install root at {}", install_root.display()))?;
 
@@ -230,12 +261,24 @@ fn cmd_init(root_flag: Option<&str>) -> Result<()> {
     }
 
     // Ensure user config is saved
-    if root_flag.is_some() && cfg.default_root != install_root_rel {
-        cfg.default_root = install_root_rel.to_string();
+    if cfg.default_root != install_root_rel {
+        cfg.default_root = install_root_rel.clone();
+        config::save(&cfg)?;
+    } else {
+        config::save_if_missing(&cfg)?;
     }
-    config::save_if_missing(&cfg)?;
 
-    println!("Initialized. Install root: {}", install_root.display());
+    println!("Initialized. Managed root: {}", install_root.display());
+    if let Some(target) = expose_target {
+        expose::run_expose(expose::ExposeArgs {
+            target: target.into(),
+            root: Some(&install_root_rel),
+        })?;
+    } else {
+        println!(
+            "Tip: run `sk expose codex`, `sk expose claude`, or `sk expose both` to create native discovery roots."
+        );
+    }
     Ok(())
 }
 
@@ -245,6 +288,8 @@ fn cmd_config(cmd: ConfigCmd) -> Result<()> {
             let cfg = config::load_or_default()?;
             match key.as_str() {
                 "default_root" => println!("{}", cfg.default_root),
+                "codex_root" => println!("{}", cfg.codex_root),
+                "claude_root" => println!("{}", cfg.claude_root),
                 "protocol" => println!("{}", cfg.protocol),
                 "default_host" => println!("{}", cfg.default_host),
                 "github_user" => println!("{}", cfg.github_user),
@@ -257,6 +302,8 @@ fn cmd_config(cmd: ConfigCmd) -> Result<()> {
             let mut cfg = config::load_or_default()?;
             match key.as_str() {
                 "default_root" => cfg.default_root = value,
+                "codex_root" => cfg.codex_root = value,
+                "claude_root" => cfg.claude_root = value,
                 "protocol" => cfg.protocol = value,
                 "default_host" => cfg.default_host = value,
                 "github_user" => cfg.github_user = value,
@@ -274,8 +321,7 @@ fn cmd_config(cmd: ConfigCmd) -> Result<()> {
 fn cmd_list(_root_flag: Option<&str>, json: bool) -> Result<()> {
     let project_root = git::ensure_git_repo()?;
     let cfg = config::load_or_default()?;
-    let install_root_rel = _root_flag.unwrap_or(&cfg.default_root);
-    let install_root = paths::resolve_project_path(&project_root, install_root_rel);
+    let install_root = config::resolve_managed_root(&project_root, &cfg, _root_flag).absolute;
     let lock_path = project_root.join("skills.lock.json");
     if !lock_path.exists() {
         println!("[]");
@@ -365,8 +411,7 @@ fn load_skill_meta(
 fn cmd_where(name: &str, root_flag: Option<&str>) -> Result<()> {
     let project_root = git::ensure_git_repo()?;
     let cfg = config::load_or_default()?;
-    let install_root_rel = root_flag.unwrap_or(&cfg.default_root);
-    let install_root = paths::resolve_project_path(&project_root, install_root_rel);
+    let install_root = config::resolve_managed_root(&project_root, &cfg, root_flag).absolute;
     let path = install_root.join(name);
     if path.exists() {
         println!("{}", path.display());

@@ -1,7 +1,7 @@
 mod catalog;
 mod transport;
 
-use crate::{config, git, paths};
+use crate::{config, git};
 use anyhow::{Context, Result};
 use catalog::{relative_path, scan_skills};
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
@@ -44,8 +44,7 @@ const BASE_SERVER_INSTRUCTIONS: &str = "Start every task with skills_search to c
 pub fn run_server(root_override: Option<&str>) -> Result<()> {
     let project_root = git::ensure_git_repo()?;
     let cfg = config::load_or_default()?;
-    let install_root_rel = root_override.unwrap_or(&cfg.default_root);
-    let skills_root = paths::resolve_project_path(&project_root, install_root_rel);
+    let skills_root = config::resolve_managed_root(&project_root, &cfg, root_override).absolute;
     let availability = if skills_root.exists() {
         Availability::Ready
     } else {
@@ -431,7 +430,7 @@ impl SkMcpServer {
 
     #[tool(
         name = "skills_search",
-        description = "Search skills stored under the repo's skills/ directory"
+        description = "Search skills stored under the repo's managed skills directory"
     )]
     async fn route_skills_search(
         &self,

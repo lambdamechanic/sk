@@ -73,6 +73,7 @@ fn doctor_reports_duplicate_install_names() {
     let mut cmd = cargo_bin_cmd!("sk");
     cmd.current_dir(&project)
         .env("SK_CACHE_DIR", tmp.path().join("cache").to_str().unwrap())
+        .env("SK_CONFIG_DIR", tmp.path().join("config"))
         .args(["doctor"]);
     cmd.assert()
         .success()
@@ -113,6 +114,7 @@ fn doctor_prunes_unreferenced_cache_with_apply() {
     let mut cmd = cargo_bin_cmd!("sk");
     cmd.current_dir(&project)
         .env("SK_CACHE_DIR", &cache_root)
+        .env("SK_CONFIG_DIR", tmp.path().join("config"))
         .args(["doctor", "--apply"]);
     cmd.assert().success();
 
@@ -164,6 +166,7 @@ fn doctor_drops_orphan_lock_entries_and_normalizes_lockfile() {
     let mut cmd = cargo_bin_cmd!("sk");
     cmd.current_dir(&project)
         .env("SK_CACHE_DIR", tmp.path().join("cache"))
+        .env("SK_CONFIG_DIR", tmp.path().join("config"))
         .args(["doctor", "--apply"]);
     cmd.assert().success();
 
@@ -182,7 +185,7 @@ fn doctor_reports_missing_skill_md() {
     fs::create_dir_all(&project).unwrap();
     git(&["init", "-b", "main"], &project);
 
-    let install_dir = project.join("skills").join("demo");
+    let install_dir = project.join(".agents").join("skills").join("demo");
     fs::create_dir_all(&install_dir).unwrap();
     fs::write(install_dir.join("README.md"), "demo").unwrap();
     let digest = digest::digest_dir(&install_dir).unwrap();
@@ -209,6 +212,7 @@ fn doctor_reports_missing_skill_md() {
     let mut cmd = cargo_bin_cmd!("sk");
     cmd.current_dir(&project)
         .env("SK_CACHE_DIR", tmp.path().join("cache"))
+        .env("SK_CONFIG_DIR", tmp.path().join("config"))
         .args(["doctor"]);
     cmd.assert().success().stdout(contains("Missing SKILL.md"));
 }
@@ -220,7 +224,7 @@ fn doctor_reports_invalid_skill_frontmatter() {
     fs::create_dir_all(&project).unwrap();
     git(&["init", "-b", "main"], &project);
 
-    let install_dir = project.join("skills").join("broken");
+    let install_dir = project.join(".agents").join("skills").join("broken");
     fs::create_dir_all(&install_dir).unwrap();
     fs::write(
         install_dir.join("SKILL.md"),
@@ -251,6 +255,7 @@ fn doctor_reports_invalid_skill_frontmatter() {
     let mut cmd = cargo_bin_cmd!("sk");
     cmd.current_dir(&project)
         .env("SK_CACHE_DIR", tmp.path().join("cache"))
+        .env("SK_CONFIG_DIR", tmp.path().join("config"))
         .args(["doctor"]);
     cmd.assert().success().stdout(contains("Invalid SKILL.md"));
 }

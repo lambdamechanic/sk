@@ -106,7 +106,7 @@ fn upgrade_fetches_cache_and_applies_without_update() {
     );
 
     // Install v1
-    let dest = project.join("skills").join("s0");
+    let dest = project.join(".agents").join("skills").join("s0");
     extract_subdir_from_commit(&cache, &v1, skill_path, &dest);
     let digest_v1 = digest_dir(&dest);
     let lock = serde_json::json!({
@@ -132,6 +132,7 @@ fn upgrade_fetches_cache_and_applies_without_update() {
     let out = cmd
         .current_dir(&project)
         .env("SK_CACHE_DIR", cache_root.to_str().unwrap())
+        .env("SK_CONFIG_DIR", root.join("config"))
         .args(["upgrade", "--all"]) // should succeed
         .output()
         .unwrap();
@@ -180,7 +181,7 @@ fn upgrade_refreshes_lock_when_local_matches_remote() {
         &bare,
     );
 
-    let dest = project.join("skills").join("s0");
+    let dest = project.join(".agents").join("skills").join("s0");
     extract_subdir_from_commit(&cache, &v1, skill_path, &dest);
     let digest_v1 = digest_dir(&dest);
     let lock = serde_json::json!({
@@ -207,6 +208,7 @@ fn upgrade_refreshes_lock_when_local_matches_remote() {
     let out = cmd
         .current_dir(&project)
         .env("SK_CACHE_DIR", cache_root.to_str().unwrap())
+        .env("SK_CONFIG_DIR", root.join("config"))
         .args(["upgrade", "s0"])
         .output()
         .unwrap();
@@ -273,7 +275,7 @@ fn upgrade_handles_cross_device_rename_simulation() {
     );
 
     // Install v1
-    let dest = project.join("skills").join("s0");
+    let dest = project.join(".agents").join("skills").join("s0");
     extract_subdir_from_commit(&cache, &v1, skill_path, &dest);
     let digest_v1 = digest_dir(&dest);
     let lock = serde_json::json!({
@@ -291,6 +293,7 @@ fn upgrade_handles_cross_device_rename_simulation() {
     let out = cmd
         .current_dir(&project)
         .env("SK_CACHE_DIR", cache_root.to_str().unwrap())
+        .env("SK_CONFIG_DIR", root.join("config"))
         .env("SK_SIMULATE_EXDEV", "1")
         .args(["upgrade", "--all"]) // should succeed using fallback copy
         .output()
@@ -383,10 +386,10 @@ fn upgrade_does_not_mutate_on_extract_failure() {
     let v1_1 = v1_1.trim().to_string();
 
     // Install v1 contents
-    let dest0 = project.join("skills").join("s0");
+    let dest0 = project.join(".agents").join("skills").join("s0");
     extract_subdir_from_commit(&cache0, &v1_0, "skill-0", &dest0);
     let dig0 = digest_dir(&dest0);
-    let dest1 = project.join("skills").join("s1");
+    let dest1 = project.join(".agents").join("skills").join("s1");
     extract_subdir_from_commit(&cache1, &v1_1, "skill-1", &dest1);
     let dig1 = digest_dir(&dest1);
 
@@ -410,6 +413,7 @@ fn upgrade_does_not_mutate_on_extract_failure() {
     let out = cmd
         .current_dir(&project)
         .env("SK_CACHE_DIR", cache_root.to_str().unwrap())
+        .env("SK_CONFIG_DIR", root.join("config"))
         .args(["upgrade", "--all"]) // expect failure
         .output()
         .unwrap();

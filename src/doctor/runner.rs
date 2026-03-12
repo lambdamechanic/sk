@@ -189,8 +189,7 @@ struct ProjectContext {
 fn load_project_context(root_flag: Option<&str>) -> Result<ProjectContext> {
     let project_root = git::ensure_git_repo()?;
     let cfg = config::load_or_default()?;
-    let install_root_rel = root_flag.unwrap_or(&cfg.default_root);
-    let install_root = paths::resolve_project_path(&project_root, install_root_rel);
+    let install_root = config::resolve_managed_root(&project_root, &cfg, root_flag).absolute;
     let lock_path = project_root.join("skills.lock.json");
     if !lock_path.exists() {
         bail!("no lockfile");

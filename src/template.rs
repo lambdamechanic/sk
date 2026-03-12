@@ -17,8 +17,7 @@ pub fn run_template_create(args: TemplateCreateArgs) -> Result<()> {
 
     let project_root = git::ensure_git_repo()?;
     let cfg = config::load_or_default()?;
-    let install_root_rel = args.root.unwrap_or(&cfg.default_root);
-    let install_root = paths::resolve_project_path(&project_root, install_root_rel);
+    let install_root = config::resolve_managed_root(&project_root, &cfg, args.root).absolute;
     fs::create_dir_all(&install_root)
         .with_context(|| format!("create install root at {}", install_root.display()))?;
 

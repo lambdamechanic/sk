@@ -39,7 +39,9 @@ fn precommit_fails_on_local_file_sources() {
     fs::write(project.join("skills.lock.json"), body).unwrap();
 
     let mut cmd = cargo_bin_cmd!("sk");
-    cmd.current_dir(&project).args(["precommit"]);
+    cmd.current_dir(&project)
+        .env("SK_CONFIG_DIR", tmp.path().join("config"))
+        .args(["precommit"]);
     cmd.assert()
         .failure()
         .stderr(contains("local (file:// or localhost) sources"));
@@ -77,6 +79,7 @@ fn precommit_passes_on_remote_sources() {
     let mut cmd = cargo_bin_cmd!("sk");
     let out = cmd
         .current_dir(&project)
+        .env("SK_CONFIG_DIR", tmp.path().join("config"))
         .args(["precommit"])
         .output()
         .unwrap();
@@ -106,6 +109,7 @@ fn precommit_treats_localhost_exact_only() {
     let mut cmd = cargo_bin_cmd!("sk");
     let out = cmd
         .current_dir(&project)
+        .env("SK_CONFIG_DIR", tmp.path().join("config"))
         .args(["precommit"])
         .output()
         .unwrap();
@@ -136,6 +140,7 @@ fn precommit_flags_http_localhost_and_ssh_localhost() {
     let mut cmd = cargo_bin_cmd!("sk");
     let assert = cmd
         .current_dir(&project)
+        .env("SK_CONFIG_DIR", tmp.path().join("config"))
         .args(["precommit"])
         .assert()
         .failure();
@@ -163,7 +168,9 @@ fn precommit_flags_scp_with_non_git_user_and_ipv6() {
 "#;
     fs::write(project.join("skills.lock.json"), body).unwrap();
     let mut cmd = cargo_bin_cmd!("sk");
-    cmd.current_dir(&project).args(["precommit"]);
+    cmd.current_dir(&project)
+        .env("SK_CONFIG_DIR", tmp.path().join("config"))
+        .args(["precommit"]);
     cmd.assert()
         .failure()
         .stderr(contains("local (file:// or localhost) sources"));
@@ -187,7 +194,9 @@ fn precommit_flags_ssh_with_userinfo_and_ipv6() {
 "#;
     fs::write(project.join("skills.lock.json"), body).unwrap();
     let mut cmd = cargo_bin_cmd!("sk");
-    cmd.current_dir(&project).args(["precommit"]);
+    cmd.current_dir(&project)
+        .env("SK_CONFIG_DIR", tmp.path().join("config"))
+        .args(["precommit"]);
     cmd.assert()
         .failure()
         .stderr(contains("local (file:// or localhost) sources"));
@@ -212,7 +221,9 @@ fn precommit_flags_scp_without_userinfo() {
 "#;
     fs::write(project.join("skills.lock.json"), body).unwrap();
     let mut cmd = cargo_bin_cmd!("sk");
-    cmd.current_dir(&project).args(["precommit"]);
+    cmd.current_dir(&project)
+        .env("SK_CONFIG_DIR", tmp.path().join("config"))
+        .args(["precommit"]);
     cmd.assert()
         .failure()
         .stderr(contains("local (file:// or localhost) sources"));
