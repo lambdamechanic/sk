@@ -176,7 +176,7 @@ fn mcp_server_search_and_show_skill() {
     );
     assert_eq!(
         meta.get("skillFile").and_then(|v| v.as_str()),
-        Some("skills/landing-the-plane/SKILL.md"),
+        Some(".agents/skills/landing-the-plane/SKILL.md"),
         "skill resource meta should include skillFile path"
     );
 

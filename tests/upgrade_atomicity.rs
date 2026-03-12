@@ -118,7 +118,7 @@ proptest! {
 
             // Install v1 into project
             let installed_name = format!("s{i}");
-            let dest = project.join("skills").join(&installed_name);
+            let dest = project.join(".agents").join("skills").join(&installed_name);
             extract_subdir_from_commit(&cache, &v1, &skill_path, &dest);
             let digest = digest_dir(&dest);
             entries.push((installed_name, repo, skill_path, v1, v2, digest, file_url));
@@ -126,9 +126,13 @@ proptest! {
 
         // Mark one as modified by appending to file
         let (name_k, _repo_k, _path_k, _v1_k, _v2_k, _digest_k, _url_k) = entries[modified_idx].clone();
-        let f = project.join("skills").join(&name_k).join("file.txt");
+        let f = project
+            .join(".agents")
+            .join("skills")
+            .join(&name_k)
+            .join("file.txt");
         fs::OpenOptions::new().append(true).open(&f).unwrap().write_all(b"local-edit\n").unwrap();
-        let _new_digest = digest_dir(&project.join("skills").join(&name_k));
+        let _new_digest = digest_dir(&project.join(".agents").join("skills").join(&name_k));
 
         // Write lockfile with v1 commits and original digests
         let lock = serde_json::json!({
@@ -149,6 +153,7 @@ proptest! {
         let mut cmd = cargo_bin_cmd!("sk");
         cmd.current_dir(&project);
         cmd.env("SK_CACHE_DIR", cache_root.to_str().unwrap());
+        cmd.env("SK_CONFIG_DIR", root.join("config"));
         let out = cmd.args(["upgrade", "--all"]).output().unwrap();
         assert!(out.status.success(), "upgrade failed: {}", String::from_utf8_lossy(&out.stderr));
 
@@ -165,7 +170,10 @@ proptest! {
                 .get("commit")
                 .and_then(|v| v.as_str())
                 .expect("commit str");
-            let file_txt = fs::read_to_string(project.join("skills").join(name).join("file.txt")).unwrap();
+            let file_txt = fs::read_to_string(
+                project.join(".agents").join("skills").join(name).join("file.txt"),
+            )
+            .unwrap();
             if idx == modified_idx {
                 prop_assert_eq!(commit, v1);
                 prop_assert!(file_txt.contains("local-edit"));

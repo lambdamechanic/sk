@@ -78,7 +78,7 @@ fn upgrade_preserves_directory_symlink_windows() {
     );
 
     // Install v1 via archive
-    let dest = project.join("skills/s0");
+    let dest = project.join(".agents/skills/s0");
     extract_subdir_from_commit(&cache, &v1, "skill", &dest);
 
     // Build lock
@@ -121,6 +121,7 @@ fn upgrade_preserves_directory_symlink_windows() {
     let out = cmd
         .current_dir(&project)
         .env("SK_CACHE_DIR", cache_root.to_str().unwrap())
+        .env("SK_CONFIG_DIR", root.join("config"))
         .env("SK_SIMULATE_EXDEV", "1")
         .args(["upgrade", "--all"])
         .output()
@@ -128,7 +129,7 @@ fn upgrade_preserves_directory_symlink_windows() {
     assert!(out.status.success(), "upgrade failed: {out:?}");
 
     // dir-link should still be a symlink dir
-    let link_path = project.join("skills/s0/dir-link");
+    let link_path = project.join(".agents/skills/s0/dir-link");
     let meta = fs::symlink_metadata(&link_path).unwrap();
     assert!(meta.file_type().is_symlink());
 }

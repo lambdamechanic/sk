@@ -22,8 +22,9 @@ cargo install sk
 ### 1. Initialize inside your repo
 ```bash
 cd /path/to/your/git/repo
-sk init
+sk init --expose both
 ```
+`sk` keeps its managed root under `.agents/skills` and, with `--expose both`, also creates `.claude/skills` as a native discovery symlink.
 
 ### 2. Add the Anthropic catalog
 ```bash
@@ -61,7 +62,7 @@ sk template create retro-template "Retro two-column recap template"
 sk doctor
 sk sync-back brand-guidelines --message "Revise guidance tone"
 ```
-`sk sync-back` looks up the push target from `sk config get default_repo`, mirrors `skills/brand-guidelines` into a temporary branch named `sk/sync/brand-guidelines/<timestamp>`, and opens a PR automatically unless you override the repo/path flags yourself. Pass `--message` (or `--message-file`) to control the PR body; omit it to re-use the default summary.
+`sk sync-back` looks up the push target from `sk config get default_repo`, mirrors the managed `.agents/skills/brand-guidelines` tree into a temporary branch named `sk/sync/brand-guidelines/<timestamp>`, and opens a PR automatically unless you override the repo/path flags yourself. Pass `--message` (or `--message-file`) to control the PR body; omit it to re-use the default summary.
 
 ### 7. Stay up to date
 ```bash
@@ -134,10 +135,11 @@ make qlty-smells               # blocking (use make qlty-smells-advisory for war
 ```
 
 ## Key concepts & layout
-- `skills/` — default install root (override via `sk init --root` or `sk config set default_root`; all commands operate on the configured default root—per-command `--root` overrides have been removed).
+- `.agents/skills` — default managed skills root (override via `sk init --root` or `sk config set default_root`; installs, upgrades, doctor, and sync-back all operate on this configured root).
+- `.agents/skills` / `.claude/skills` — native exposure roots for Codex and Claude. Create them with `sk expose codex`, `sk expose claude`, or `sk expose both`.
 - `skills.lock.json` — versioned lockfile tracking each installed skill plus the shared repo registry (aliases, repo specs, commit/digest, timestamps).
 - Cache clones live under `~/.cache/sk/repos/<host>/<owner>/<repo>` (override with `SK_CACHE_DIR`).
-- User config lives in `~/.config/sk/config.json` (override with `SK_CONFIG_DIR`). Keys: `default_root`, `default_repo`, `template_source`, `protocol` (`ssh` or `https`), `default_host`, `github_user`.
+- User config lives in `~/.config/sk/config.json` (override with `SK_CONFIG_DIR`). Keys: `default_root`, `codex_root`, `claude_root`, `default_repo`, `template_source`, `protocol` (`ssh` or `https`), `default_host`, `github_user`.
 - Every skill subdirectory must contain `SKILL.md` with YAML front-matter that declares `name` and `description`.
 
 ## Encourage agents to bootstrap the skills MCP
@@ -152,7 +154,7 @@ That paragraph solves the “chicken-and-egg” problem: the agent reads the pol
 
 ### Wire Codex (or any MCP client) into `sk`
 
-1. Make sure `sk` is on your `$PATH` (`cargo install sk` if needed) and that you run the MCP server from this repository’s root so it can find `.git` and the vendored `skills/` directory.
+1. Make sure `sk` is on your `$PATH` (`cargo install sk` if needed) and that you run the MCP server from this repository’s root so it can find `.git` and the managed `.agents/skills` directory.
 2. Register the server with Codex (one time per machine) so agents can call `skills_list`, `skills_search`, and `skills_show` via MCP. Add the server to `~/.codex/config.toml`:
 
    ```toml
@@ -161,7 +163,7 @@ That paragraph solves the “chicken-and-egg” problem: the agent reads the pol
    args = ["mcp-server"]
    ```
 
-   Run Codex from this repository’s root (or add `dir = "/path/to/your/checkout"`) so `sk mcp-server` can find `.git` and the vendored `skills/` tree. If you prefer to register the server via CLI instead of editing the config by hand, run the equivalent command once from the repo root:
+   Run Codex from this repository’s root (or add `dir = "/path/to/your/checkout"`) so `sk mcp-server` can find `.git` and the managed `.agents/skills` tree. If you prefer to register the server via CLI instead of editing the config by hand, run the equivalent command once from the repo root:
 
    ```bash
    codex mcp add -- bash -lc 'cd /home/mark/lambdalabs/sk && sk mcp-server' sk
@@ -175,8 +177,9 @@ That paragraph solves the “chicken-and-egg” problem: the agent reads the pol
 ## Command cheat sheet
 | Command | Use it when |
 | --- | --- |
-| `sk init [--root ./skills]` | Bootstrap a repo-local skills directory and lockfile. |
-| `sk install <repo> <skill-name> [--path subdir] [--alias name]` | Copy a skill from a git repo into `skills/<alias>` and lock its commit/digest. |
+| `sk init [--root ./.agents/skills] [--expose codex|claude|both]` | Bootstrap the managed skills directory and optional native discovery roots. |
+| `sk expose <codex|claude|both>` | Create `.agents/skills` and/or `.claude/skills` as symlinks to the managed root. |
+| `sk install <repo> <skill-name> [--path subdir] [--alias name]` | Copy a skill from a git repo into the managed root under `<alias>` and lock its commit/digest. |
 | `sk list` / `sk where <name>` | Inspect installed skill set or find the on-disk path. |
 | `sk doctor [name...] [--summary|--status|--diff] [--json] [--apply]` | Unified health command: `--summary` is the old `sk check`, `--status` shows digests and upgrades, `--diff` compares with the remote tip, and without flags it performs the full repair run (optionally `--apply`). |
 | `sk repo add <repo> [--alias foo]` | Cache a remote repo (and record it in `skills.lock.json`’s repo registry) without installing a skill yet. |
@@ -186,7 +189,7 @@ That paragraph solves the “chicken-and-egg” problem: the agent reads the pol
 | `sk repo search <query> [--repo alias] [--json]` | Search all cached repos (or a single repo via `--repo`) for matching skills. |
 | `sk cache refresh` | Refresh cached repos (safe to run on CI). |
 | `sk upgrade [--all or <name>] [--dry-run]` | Copy newer commits into the repo and update the lockfile. |
-| `sk template create <name> "<description>"` | Scaffold a new skill from the configured template into `skills/<name>`. |
+| `sk template create <name> "<description>"` | Scaffold a new skill from the configured template into the managed root under `<name>`. |
 | `sk sync-back <name> [-m "..."]` | Push local edits (or brand-new skills) to the configured repo and auto-open a PR with `gh`. |
 | `sk precommit [--allow-local]` | Enforce no local-only sources in `skills.lock.json` before committing. |
 | `sk config get|set <key> [value]` | View or tweak defaults like install root, protocol, host, GitHub username. |

@@ -12,7 +12,7 @@ sk repo search --repo @anthropics/skills --all --json  # machine-readable listin
 `sk cache refresh` refreshes every cached repo. All catalog files live under `~/.cache/sk/repos/<host>/<owner>/<repo>` unless you override `SK_CACHE_DIR`. Run it once per CI job (or before `sk doctor --diff` / `sk upgrade`) so downstream commands compare against the latest remote tip; it deduplicates repos so each cache is fetched at most once per invocation.
 
 ## Template behavior
-`sk template create <name> "<description>"` copies the canonical template into `./skills/<name>`, rewrites the YAML front matter, and adds stub prompt/test files so any agent can use the new helper. The source template comes from `sk config get template_source` (defaults to `@anthropics/skills template-skill`). Change it with `sk config set template_source <repo>/<skill>`. The install root follows `./skills` unless you override it via `sk config set default_root <dir>`.
+`sk template create <name> "<description>"` copies the canonical template into `./.agents/skills/<name>`, rewrites the YAML front matter, and adds stub prompt/test files so any agent can use the new helper. The source template comes from `sk config get template_source` (defaults to `@anthropics/skills template-skill`). Change it with `sk config set template_source <repo>/<skill>`. The managed root follows `./.agents/skills` unless you override it via `sk config set default_root <dir>`.
 
 ## `sk doctor` deep dive
 `sk doctor [name...]` recalculates digests, confirms cached commits still exist, and tells you which follow-up command fixes each issue. Add `--apply` to rebuild missing installs from the cached commit, drop orphaned lock entries, and prune caches so the lockfile stays aligned with disk. When editing a new skill, run `sk doctor <name>` frequently so you know if upstream advanced while you were working.
@@ -48,7 +48,7 @@ $ sk doctor my-skill
 ```
 
 ## `sk sync-back` internals
-After editing files under `skills/<name>`:
+After editing files under `.agents/skills/<name>`:
 1. The install directory is mirrored into a clean worktree of the cached repo under `~/.cache/sk/repos/...` (prefers `rsync -a --delete`, falls back to a recursive copy if `rsync` is unavailable).
 2. `sk` commits and pushes to the repo supplied via `--repo` or, when omitted, `sk config get default_repo`. The destination skill path defaults to the install name so `sk sync-back <name>` works with no extra flags once `default_repo` is set.
 3. Branches default to `sk/sync/<name>/<timestamp>`. `gh pr create` (and `gh pr merge` when auto-merge is armed) handles the review path. Missing `rsync` or `gh` triggers warnings but never aborts the publish.
@@ -104,17 +104,19 @@ make qlty-smells               # blocking; use make qlty-smells-advisory for war
 ```
 
 ## Key concepts & layout
-- `skills/` — default install root (override via `sk init --root` or `sk config set default_root`; operational commands use this configured root—per-command `--root` flags were removed).
+- `.agents/skills` — default managed skills root (override via `sk init --root` or `sk config set default_root`; operational commands use this configured root—per-command `--root` flags were removed).
+- `.agents/skills` / `.claude/skills` — optional native exposure roots created by `sk expose codex|claude|both`.
 - `skills.lock.json` — lockfile tracking each installed skill plus the shared repo registry (name, repo URL, commit, digest, timestamps, aliases).
 - Cache clones live under `~/.cache/sk/repos/<host>/<owner>/<repo>` (override with `SK_CACHE_DIR`).
-- User config lives in `~/.config/sk/config.json` (override with `SK_CONFIG_DIR`). Keys include `default_root`, `default_repo`, `template_source`, `protocol` (`ssh` or `https`), `default_host`, `github_user`.
+- User config lives in `~/.config/sk/config.json` (override with `SK_CONFIG_DIR`). Keys include `default_root`, `codex_root`, `claude_root`, `default_repo`, `template_source`, `protocol` (`ssh` or `https`), `default_host`, `github_user`.
 - Every skill subdirectory needs `SKILL.md` with YAML front matter declaring `name` and `description`.
 
 ## Command cheat sheet
 | Command | Use it when |
 | --- | --- |
-| `sk init [--root ./skills]` | Bootstrap a repo-local skills directory and lockfile. |
-| `sk install <repo> <skill-name> [--path subdir] [--alias name]` | Copy a skill from a git repo into `skills/<alias>` and lock its commit/digest. |
+| `sk init [--root ./.agents/skills] [--expose codex|claude|both]` | Bootstrap the managed skills directory and optional native discovery roots. |
+| `sk expose <codex|claude|both>` | Create `.agents/skills` and/or `.claude/skills` as symlinks to the managed root. |
+| `sk install <repo> <skill-name> [--path subdir] [--alias name]` | Copy a skill from a git repo into the managed root under `<alias>` and lock its commit/digest. |
 | `sk list` / `sk where <name>` | Inspect installed skill set or find the on-disk path. |
 | `sk doctor [name...] [--summary|--status|--diff] [--json] [--apply]` | Unified install health checks: `--summary` replaces `sk check`, `--status` shows digests plus remote tips, `--diff` compares against the cached default-branch tip, and without flags it runs the deep repair flow (optionally `--apply`). |
 | `sk repo add <repo> [--alias foo]` | Cache a remote repo (and record it in `skills.lock.json`’s repo registry) without installing a skill yet. |
@@ -124,7 +126,7 @@ make qlty-smells               # blocking; use make qlty-smells-advisory for war
 | `sk repo search <query> [--repo alias] [--json]` | Search all cached repos (or a single repo via `--repo`) for matching skills. |
 | `sk cache refresh` | Refresh cached repos (safe to run on CI). |
 | `sk upgrade [--all or <name>] [--dry-run]` | Copy newer commits into the repo and update the lockfile. |
-| `sk template create <name> "<description>"` | Scaffold a new skill from the configured template into `skills/<name>`. |
+| `sk template create <name> "<description>"` | Scaffold a new skill from the configured template into the managed root under `<name>`. |
 | `sk sync-back <name> [-m "..."]` | Push local edits (or brand-new skills) to the configured repo and open a PR with `gh`. |
 | `sk precommit [--allow-local]` | Ensure `skills.lock.json` contains only shareable sources before committing. |
 | `sk config get <key>` / `sk config set <key> [value]` | View or tweak defaults like install root, protocol, host, or GitHub username. |

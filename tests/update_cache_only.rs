@@ -62,6 +62,7 @@ fn run_cache_refresh(project: &Path, cache_root: &Path) {
     let out = cmd
         .current_dir(project)
         .env("SK_CACHE_DIR", cache_root.to_str().unwrap())
+        .env("SK_CONFIG_DIR", cache_root.parent().unwrap().join("config"))
         .args(["cache", "refresh"])
         .output()
         .unwrap();

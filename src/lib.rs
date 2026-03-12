@@ -2,6 +2,7 @@ pub mod cli;
 pub mod config;
 pub mod digest;
 pub mod doctor;
+pub mod expose;
 pub mod git;
 pub mod install;
 pub mod lock;

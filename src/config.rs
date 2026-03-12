@@ -7,7 +7,9 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct UserConfig {
-    pub default_root: String, // e.g., "./skills"
+    pub default_root: String, // managed skills root, e.g. "./.agents/skills"
+    pub codex_root: String,   // e.g. "./.agents/skills"
+    pub claude_root: String,  // e.g. "./.claude/skills"
     pub protocol: String,     // "ssh" | "https"
     pub default_host: String, // e.g., "github.com"
     pub github_user: String,
@@ -18,7 +20,9 @@ pub struct UserConfig {
 impl Default for UserConfig {
     fn default() -> Self {
         Self {
-            default_root: "./skills".to_string(),
+            default_root: "./.agents/skills".to_string(),
+            codex_root: "./.agents/skills".to_string(),
+            claude_root: "./.claude/skills".to_string(),
             protocol: "ssh".to_string(),
             default_host: "github.com".to_string(),
             github_user: String::new(),

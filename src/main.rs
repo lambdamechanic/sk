@@ -2,6 +2,7 @@ mod cli;
 mod config;
 mod digest;
 mod doctor;
+mod expose;
 mod git;
 mod install;
 mod lock;
@@ -21,7 +22,7 @@ use clap::{CommandFactory, Parser};
 use owo_colors::OwoColorize;
 use std::io;
 
-use crate::cli::{CacheCmd, Cli, Commands, ConfigCmd, RepoCmd, TemplateCmd};
+use crate::cli::{CacheCmd, Cli, Commands, ConfigCmd, ExposeTargetArg, RepoCmd, TemplateCmd};
 use crate::doctor::{DoctorArgs, DoctorMode};
 use serde::Serialize;
 use std::io::IsTerminal;
@@ -30,8 +31,12 @@ use unicode_width::UnicodeWidthStr;
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Commands::Init { root } => cmd_init(root.as_deref()),
+        Commands::Init { root, expose } => cmd_init(root.as_deref(), expose),
         Commands::List { root, json } => cmd_list(root.as_deref(), json),
+        Commands::Expose { target, root } => expose::run_expose(expose::ExposeArgs {
+            target: target.into(),
+            root: root.as_deref(),
+        }),
         Commands::Where { installed_name } => cmd_where(&installed_name, None),
         Commands::Cache { cmd } => match cmd {
             CacheCmd::Refresh => update::run_cache_refresh(),
@@ -207,11 +212,13 @@ fn cmd_doctor(cfg: CmdDoctorConfig<'_>) -> Result<()> {
     })
 }
 
-fn cmd_init(root_flag: Option<&str>) -> Result<()> {
+fn cmd_init(root_flag: Option<&str>, expose_target: Option<ExposeTargetArg>) -> Result<()> {
     let project_root = git::ensure_git_repo()?;
     let mut cfg = config::load_or_default()?;
-    let install_root_rel = root_flag.unwrap_or(&cfg.default_root);
-    let install_root = paths::resolve_project_path(&project_root, install_root_rel);
+    let install_root_rel = root_flag
+        .map(str::to_string)
+        .unwrap_or_else(|| cfg.default_root.clone());
+    let install_root = paths::resolve_project_path(&project_root, &install_root_rel);
     std::fs::create_dir_all(&install_root)
         .with_context(|| format!("create install root at {}", install_root.display()))?;
 
@@ -231,11 +238,21 @@ fn cmd_init(root_flag: Option<&str>) -> Result<()> {
 
     // Ensure user config is saved
     if root_flag.is_some() && cfg.default_root != install_root_rel {
-        cfg.default_root = install_root_rel.to_string();
+        cfg.default_root = install_root_rel.clone();
     }
     config::save_if_missing(&cfg)?;
 
-    println!("Initialized. Install root: {}", install_root.display());
+    println!("Initialized. Managed root: {}", install_root.display());
+    if let Some(target) = expose_target {
+        expose::run_expose(expose::ExposeArgs {
+            target: target.into(),
+            root: Some(&install_root_rel),
+        })?;
+    } else {
+        println!(
+            "Tip: run `sk expose codex`, `sk expose claude`, or `sk expose both` to create native discovery roots."
+        );
+    }
     Ok(())
 }
 
@@ -245,6 +262,8 @@ fn cmd_config(cmd: ConfigCmd) -> Result<()> {
             let cfg = config::load_or_default()?;
             match key.as_str() {
                 "default_root" => println!("{}", cfg.default_root),
+                "codex_root" => println!("{}", cfg.codex_root),
+                "claude_root" => println!("{}", cfg.claude_root),
                 "protocol" => println!("{}", cfg.protocol),
                 "default_host" => println!("{}", cfg.default_host),
                 "github_user" => println!("{}", cfg.github_user),
@@ -257,6 +276,8 @@ fn cmd_config(cmd: ConfigCmd) -> Result<()> {
             let mut cfg = config::load_or_default()?;
             match key.as_str() {
                 "default_root" => cfg.default_root = value,
+                "codex_root" => cfg.codex_root = value,
+                "claude_root" => cfg.claude_root = value,
                 "protocol" => cfg.protocol = value,
                 "default_host" => cfg.default_host = value,
                 "github_user" => cfg.github_user = value,

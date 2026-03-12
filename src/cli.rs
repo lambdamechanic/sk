@@ -1,4 +1,11 @@
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
+
+#[derive(Copy, Clone, Debug, ValueEnum)]
+pub enum ExposeTargetArg {
+    Codex,
+    Claude,
+    Both,
+}
 
 #[derive(Parser, Debug)]
 #[command(name = "sk", version, about = "Repo-scoped Claude Skills manager")]
@@ -12,6 +19,8 @@ pub enum Commands {
     Init {
         #[arg(long)]
         root: Option<String>,
+        #[arg(long, value_enum, help = "Create native discovery roots after init")]
+        expose: Option<ExposeTargetArg>,
     },
     Install {
         repo: String,
@@ -30,6 +39,16 @@ pub enum Commands {
         root: Option<String>,
         #[arg(long)]
         json: bool,
+    },
+    #[command(about = "Expose the managed skills root to native agent directories")]
+    Expose {
+        #[arg(value_enum)]
+        target: ExposeTargetArg,
+        #[arg(
+            long,
+            help = "Override the managed skills root (defaults to sk config default_root)"
+        )]
+        root: Option<String>,
     },
     Where {
         installed_name: String,
@@ -135,7 +154,7 @@ pub enum Commands {
     McpServer {
         #[arg(
             long,
-            help = "Override the skills root (defaults to sk config default_root)"
+            help = "Override the managed skills root (defaults to sk config default_root)"
         )]
         root: Option<String>,
     },

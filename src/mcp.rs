@@ -431,7 +431,7 @@ impl SkMcpServer {
 
     #[tool(
         name = "skills_search",
-        description = "Search skills stored under the repo's skills/ directory"
+        description = "Search skills stored under the repo's managed skills directory"
     )]
     async fn route_skills_search(
         &self,
