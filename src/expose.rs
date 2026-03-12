@@ -29,8 +29,7 @@ pub struct ExposeArgs<'a> {
 pub fn run_expose(args: ExposeArgs<'_>) -> Result<()> {
     let project_root = git::ensure_git_repo()?;
     let cfg = config::load_or_default()?;
-    let managed_root_rel = args.root.unwrap_or(&cfg.default_root);
-    let managed_root = paths::resolve_project_path(&project_root, managed_root_rel);
+    let managed_root = config::resolve_managed_root(&project_root, &cfg, args.root).absolute;
     if !managed_root.exists() {
         bail!(
             "managed skills root '{}' is missing (expected at {}). Run `sk init` first.",

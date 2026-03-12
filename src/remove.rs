@@ -1,4 +1,4 @@
-use crate::{config, digest, git, lock, paths};
+use crate::{config, digest, git, lock};
 use anyhow::{anyhow, bail, Context, Result};
 use chrono::Utc;
 use std::fs;
@@ -12,8 +12,7 @@ pub struct RemoveArgs<'a> {
 pub fn run_remove(args: RemoveArgs) -> Result<()> {
     let project_root = git::ensure_git_repo()?;
     let cfg = config::load_or_default()?;
-    let install_root_rel = args.root.unwrap_or(&cfg.default_root);
-    let install_root = paths::resolve_project_path(&project_root, install_root_rel);
+    let install_root = config::resolve_managed_root(&project_root, &cfg, args.root).absolute;
 
     let lock_path = project_root.join("skills.lock.json");
     if !lock_path.exists() {

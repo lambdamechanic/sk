@@ -50,6 +50,19 @@ pub enum Commands {
         )]
         root: Option<String>,
     },
+    #[command(about = "Migrate a legacy ./skills repo to the managed .agents/skills root")]
+    MigrateRoot {
+        #[arg(long, help = "Legacy managed root to move")]
+        from: Option<String>,
+        #[arg(long, help = "Destination managed root (defaults to ./.agents/skills)")]
+        to: Option<String>,
+        #[arg(
+            long,
+            value_enum,
+            help = "Create or repair native discovery roots after migration"
+        )]
+        expose: Option<ExposeTargetArg>,
+    },
     Where {
         installed_name: String,
     },

@@ -26,6 +26,9 @@ sk init --expose both
 ```
 `sk` keeps its managed root under `.agents/skills` and, with `--expose both`, also creates `.claude/skills` as a native discovery symlink.
 
+### Upgrading Existing `./skills` Repos
+`0.1.0` changes the canonical managed root from `./skills` to `./.agents/skills`. Existing repos still work temporarily via a legacy fallback, but you should run `sk migrate-root` once per repo to move the tree cleanly. Add `--expose both` if you want the migration to repair or create both native discovery roots in the same step.
+
 ### 2. Add the Anthropic catalog
 ```bash
 sk repo add @anthropics/skills --alias anthropic
@@ -137,6 +140,7 @@ make qlty-smells               # blocking (use make qlty-smells-advisory for war
 ## Key concepts & layout
 - `.agents/skills` — default managed skills root (override via `sk init --root` or `sk config set default_root`; installs, upgrades, doctor, and sync-back all operate on this configured root).
 - `.agents/skills` / `.claude/skills` — native exposure roots for Codex and Claude. Create them with `sk expose codex`, `sk expose claude`, or `sk expose both`.
+- Legacy `./skills` repos remain readable for now, but `sk migrate-root` is the supported upgrade path.
 - `skills.lock.json` — versioned lockfile tracking each installed skill plus the shared repo registry (aliases, repo specs, commit/digest, timestamps).
 - Cache clones live under `~/.cache/sk/repos/<host>/<owner>/<repo>` (override with `SK_CACHE_DIR`).
 - User config lives in `~/.config/sk/config.json` (override with `SK_CONFIG_DIR`). Keys: `default_root`, `codex_root`, `claude_root`, `default_repo`, `template_source`, `protocol` (`ssh` or `https`), `default_host`, `github_user`.
@@ -179,6 +183,7 @@ That paragraph solves the “chicken-and-egg” problem: the agent reads the pol
 | --- | --- |
 | `sk init [--root ./.agents/skills] [--expose codex|claude|both]` | Bootstrap the managed skills directory and optional native discovery roots. |
 | `sk expose <codex|claude|both>` | Create `.agents/skills` and/or `.claude/skills` as symlinks to the managed root. |
+| `sk migrate-root [--from ./skills] [--to ./.agents/skills] [--expose codex|claude|both]` | Move a legacy repo-local skills tree into the canonical managed root and repair native discovery links. |
 | `sk install <repo> <skill-name> [--path subdir] [--alias name]` | Copy a skill from a git repo into the managed root under `<alias>` and lock its commit/digest. |
 | `sk list` / `sk where <name>` | Inspect installed skill set or find the on-disk path. |
 | `sk doctor [name...] [--summary|--status|--diff] [--json] [--apply]` | Unified health command: `--summary` is the old `sk check`, `--status` shows digests and upgrades, `--diff` compares with the remote tip, and without flags it performs the full repair run (optionally `--apply`). |

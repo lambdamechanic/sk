@@ -7,6 +7,7 @@ pub mod git;
 pub mod install;
 pub mod lock;
 pub mod mcp;
+pub mod migrate;
 pub mod paths;
 pub mod remove;
 pub mod repo;

@@ -14,8 +14,7 @@ pub fn run(args: crate::doctor::DoctorArgs) -> Result<()> {
     }
 
     let cfg = config::load_or_default()?;
-    let install_root_rel = args.root.unwrap_or(&cfg.default_root);
-    let install_root = paths::resolve_project_path(&project_root, install_root_rel);
+    let install_root = config::resolve_managed_root(&project_root, &cfg, args.root).absolute;
     let lockfile = lock::Lockfile::load(&lock_path)?;
     let mut state = DoctorState::new(args.apply, lock_path, install_root, lockfile, args.names);
 

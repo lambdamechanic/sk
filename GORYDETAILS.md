@@ -106,6 +106,7 @@ make qlty-smells               # blocking; use make qlty-smells-advisory for war
 ## Key concepts & layout
 - `.agents/skills` — default managed skills root (override via `sk init --root` or `sk config set default_root`; operational commands use this configured root—per-command `--root` flags were removed).
 - `.agents/skills` / `.claude/skills` — optional native exposure roots created by `sk expose codex|claude|both`.
+- Legacy `./skills` repos still resolve during the transition, but `sk migrate-root` is the supported way to move them onto `.agents/skills`.
 - `skills.lock.json` — lockfile tracking each installed skill plus the shared repo registry (name, repo URL, commit, digest, timestamps, aliases).
 - Cache clones live under `~/.cache/sk/repos/<host>/<owner>/<repo>` (override with `SK_CACHE_DIR`).
 - User config lives in `~/.config/sk/config.json` (override with `SK_CONFIG_DIR`). Keys include `default_root`, `codex_root`, `claude_root`, `default_repo`, `template_source`, `protocol` (`ssh` or `https`), `default_host`, `github_user`.
@@ -116,6 +117,7 @@ make qlty-smells               # blocking; use make qlty-smells-advisory for war
 | --- | --- |
 | `sk init [--root ./.agents/skills] [--expose codex|claude|both]` | Bootstrap the managed skills directory and optional native discovery roots. |
 | `sk expose <codex|claude|both>` | Create `.agents/skills` and/or `.claude/skills` as symlinks to the managed root. |
+| `sk migrate-root [--from ./skills] [--to ./.agents/skills] [--expose codex|claude|both]` | Move a legacy repo-local skills tree into the canonical managed root and repair native discovery links. |
 | `sk install <repo> <skill-name> [--path subdir] [--alias name]` | Copy a skill from a git repo into the managed root under `<alias>` and lock its commit/digest. |
 | `sk list` / `sk where <name>` | Inspect installed skill set or find the on-disk path. |
 | `sk doctor [name...] [--summary|--status|--diff] [--json] [--apply]` | Unified install health checks: `--summary` replaces `sk check`, `--status` shows digests plus remote tips, `--diff` compares against the cached default-branch tip, and without flags it runs the deep repair flow (optionally `--apply`). |
