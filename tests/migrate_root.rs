@@ -206,7 +206,7 @@ fn migrate_root_force_overwrites_destination() {
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("--force"),
+        stderr.contains("Warning: removing existing destination"),
         "expected force warning, got: {stderr}"
     );
 
@@ -238,7 +238,7 @@ fn migrate_root_errors_without_flag_when_destination_exists() {
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("--force") && stderr.contains("--keep-existing"),
+        stderr.contains("Use --force to overwrite or --keep-existing to skip"),
         "expected usage hint, got: {stderr}"
     );
 }
