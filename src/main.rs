@@ -38,11 +38,13 @@ fn main() -> Result<()> {
             target: target.into(),
             root: root.as_deref(),
         }),
-        Commands::MigrateRoot { from, to, expose } => {
+        Commands::MigrateRoot { from, to, expose, force, keep_existing } => {
             migrate::run_migrate_root(migrate::MigrateRootArgs {
                 from: from.as_deref(),
                 to: to.as_deref(),
                 expose: expose.map(Into::into),
+                force,
+                keep_existing,
             })
         }
         Commands::Where { installed_name } => cmd_where(&installed_name, None),
