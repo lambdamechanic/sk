@@ -72,9 +72,9 @@ pub fn run_migrate_root(args: MigrateRootArgs<'_>) -> Result<()> {
         {
             remove_symlink(&to_root).with_context(|| format!("remove {}", to_root.display()))?;
         }
-        Ok(_) => match args.existing {
+        Ok(metadata) => match args.existing {
             ExistingDest::KeepExisting => {
-                println!(
+                eprintln!(
                     "Skipping migration: destination '{}' already exists (keeping existing).",
                     display_path(&to_root, &project_root)
                 );
@@ -85,8 +85,12 @@ pub fn run_migrate_root(args: MigrateRootArgs<'_>) -> Result<()> {
                     "Warning: removing existing destination '{}' (--force).",
                     display_path(&to_root, &project_root)
                 );
-                fs::remove_dir_all(&to_root)
-                    .with_context(|| format!("remove {}", to_root.display()))?;
+                if metadata.is_dir() {
+                    fs::remove_dir_all(&to_root)
+                } else {
+                    fs::remove_file(&to_root)
+                }
+                .with_context(|| format!("remove {}", to_root.display()))?;
             }
             ExistingDest::Error => {
                 bail!(

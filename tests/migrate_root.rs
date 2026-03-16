@@ -169,10 +169,10 @@ fn migrate_root_keep_existing_skips_when_destination_exists() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stdout.contains("Skipping migration"),
-        "expected skip message, got: {stdout}"
+        stderr.contains("Skipping migration"),
+        "expected skip message on stderr, got: {stderr}"
     );
 
     // Both should still exist
