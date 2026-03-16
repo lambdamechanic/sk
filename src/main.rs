@@ -38,15 +38,24 @@ fn main() -> Result<()> {
             target: target.into(),
             root: root.as_deref(),
         }),
-        Commands::MigrateRoot { from, to, expose, force, keep_existing } => {
-            migrate::run_migrate_root(migrate::MigrateRootArgs {
-                from: from.as_deref(),
-                to: to.as_deref(),
-                expose: expose.map(Into::into),
-                force,
-                keep_existing,
-            })
-        }
+        Commands::MigrateRoot {
+            from,
+            to,
+            expose,
+            force,
+            keep_existing,
+        } => migrate::run_migrate_root(migrate::MigrateRootArgs {
+            from: from.as_deref(),
+            to: to.as_deref(),
+            expose: expose.map(Into::into),
+            existing: if keep_existing {
+                migrate::ExistingDest::KeepExisting
+            } else if force {
+                migrate::ExistingDest::Force
+            } else {
+                migrate::ExistingDest::Error
+            },
+        }),
         Commands::Where { installed_name } => cmd_where(&installed_name, None),
         Commands::Cache { cmd } => match cmd {
             CacheCmd::Refresh => update::run_cache_refresh(),

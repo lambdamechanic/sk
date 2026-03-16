@@ -4,12 +4,17 @@ use pathdiff::diff_paths;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+pub enum ExistingDest {
+    Error,
+    Force,
+    KeepExisting,
+}
+
 pub struct MigrateRootArgs<'a> {
     pub from: Option<&'a str>,
     pub to: Option<&'a str>,
     pub expose: Option<ExposureTarget>,
-    pub force: bool,
-    pub keep_existing: bool,
+    pub existing: ExistingDest,
 }
 
 pub fn run_migrate_root(args: MigrateRootArgs<'_>) -> Result<()> {
@@ -61,30 +66,35 @@ pub fn run_migrate_root(args: MigrateRootArgs<'_>) -> Result<()> {
     }
 
     match fs::symlink_metadata(&to_root) {
-        Ok(metadata) if metadata.file_type().is_symlink() && path_points_to(&to_root, &source_canonical)? => {
+        Ok(metadata)
+            if metadata.file_type().is_symlink()
+                && path_points_to(&to_root, &source_canonical)? =>
+        {
             remove_symlink(&to_root).with_context(|| format!("remove {}", to_root.display()))?;
         }
-        Ok(_) => {
-            if args.keep_existing {
+        Ok(_) => match args.existing {
+            ExistingDest::KeepExisting => {
                 println!(
                     "Skipping migration: destination '{}' already exists (keeping existing).",
                     display_path(&to_root, &project_root)
                 );
                 return Ok(());
-            } else if args.force {
+            }
+            ExistingDest::Force => {
                 eprintln!(
                     "Warning: removing existing destination '{}' (--force).",
                     display_path(&to_root, &project_root)
                 );
                 fs::remove_dir_all(&to_root)
                     .with_context(|| format!("remove {}", to_root.display()))?;
-            } else {
+            }
+            ExistingDest::Error => {
                 bail!(
                     "destination managed root '{}' already exists. Use --force to overwrite or --keep-existing to skip.",
                     display_path(&to_root, &project_root)
                 );
             }
-        }
+        },
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
         Err(err) => return Err(err).with_context(|| format!("stat {}", to_root.display())),
     }
