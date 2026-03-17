@@ -62,6 +62,14 @@ pub enum Commands {
             help = "Create or repair native discovery roots after migration"
         )]
         expose: Option<ExposeTargetArg>,
+        #[arg(long, help = "Overwrite destination managed root if it already exists")]
+        force: bool,
+        #[arg(
+            long,
+            conflicts_with = "force",
+            help = "Skip migration if destination managed root already exists (keep existing)"
+        )]
+        keep_existing: bool,
     },
     Where {
         installed_name: String,

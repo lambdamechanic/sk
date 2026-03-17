@@ -150,3 +150,95 @@ fn create_dir_symlink(target: &Path, link_path: &Path) -> std::io::Result<()> {
     }
     std::os::windows::fs::symlink_dir(target, link_path)
 }
+
+#[test]
+fn migrate_root_keep_existing_skips_when_destination_exists() {
+    let fx = CliFixture::new();
+    write_skill(&fx.project.join("skills/demo"), "demo");
+    write_skill(&fx.project.join(".agents/skills/demo"), "demo");
+    write_config(&fx, r#"{"default_root":"./skills"}"#);
+
+    let output = fx
+        .sk_cmd()
+        .args(["migrate-root", "--keep-existing"])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "migrate-root --keep-existing failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Skipping migration"),
+        "expected skip message on stderr, got: {stderr}"
+    );
+
+    // Both should still exist
+    assert!(
+        fx.project.join("skills/demo/SKILL.md").exists(),
+        "legacy root should still exist"
+    );
+    assert!(
+        fx.project.join(".agents/skills/demo/SKILL.md").exists(),
+        "new root should still exist"
+    );
+}
+
+#[test]
+fn migrate_root_force_overwrites_destination() {
+    let fx = CliFixture::new();
+    write_skill(&fx.project.join("skills/demo"), "demo-old");
+    write_skill(&fx.project.join(".agents/skills/demo"), "demo-new");
+    write_config(&fx, r#"{"default_root":"./skills"}"#);
+
+    let output = fx
+        .sk_cmd()
+        .args(["migrate-root", "--force"])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "migrate-root --force failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Warning: removing existing destination"),
+        "expected force warning, got: {stderr}"
+    );
+
+    // Legacy should be moved, new should contain old content
+    assert!(
+        !fx.project.join("skills").exists(),
+        "legacy root should be moved"
+    );
+    let skill_content =
+        fs::read_to_string(fx.project.join(".agents/skills/demo/SKILL.md")).unwrap();
+    assert!(
+        skill_content.contains("demo-old"),
+        "should contain migrated content, got: {skill_content}"
+    );
+}
+
+#[test]
+fn migrate_root_errors_without_flag_when_destination_exists() {
+    let fx = CliFixture::new();
+    write_skill(&fx.project.join("skills/demo"), "demo");
+    write_skill(&fx.project.join(".agents/skills/demo"), "demo");
+    write_config(&fx, r#"{"default_root":"./skills"}"#);
+
+    let output = fx.sk_cmd().args(["migrate-root"]).output().unwrap();
+    assert!(
+        !output.status.success(),
+        "migrate-root should fail without --force or --keep-existing"
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Use --force to overwrite or --keep-existing to skip"),
+        "expected usage hint, got: {stderr}"
+    );
+}
